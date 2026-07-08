@@ -336,6 +336,7 @@ def consult_fusion_tool(resident_id: str, metric: str) -> dict:
             "consistent": consistent,
             "confidence_gap": round(conf_gap, 2),
             "quality_event": False,
+            "data_mode": "fused_value_proxy",
         },
         "verdict": {
             "fused_value": value,
@@ -360,9 +361,12 @@ def consult_fusion_tool(resident_id: str, metric: str) -> dict:
     },
 )
 def write_episode_tool(
-    resident_id: str, event_id: str,
-    decision_level: str, decision_explanation: str,
+    resident_id: str,
+    event_id: str,
+    decision_level: str,
+    decision_explanation: str,
     action_message: str = "",
+    *,
     evidence: Optional[dict] = None,
 ) -> dict:
     """写入可审计诊断事件记录"""

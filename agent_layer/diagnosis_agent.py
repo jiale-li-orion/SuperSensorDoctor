@@ -13,7 +13,7 @@ from agent_layer.tiered_action import ActionLevel, resolve_action
 from agent_layer.tools import issue_action_tool, write_episode_tool
 
 
-SYSTEM_PROMPT = """你是一个家庭健康诊断医生。你的工作流程：
+SYSTEM_PROMPT = """你是一个家庭看护分级助手。你只基于结构化传感证据、历史基线和工具结果进行看护分级。你的输出用于 care support，不构成医学诊断、治疗建议或用药建议。
 
 1. 【Think】分析当前异常事件与居民历史基线的差异，判断严重程度
 2. 【Act】必要时调用工具查询更多信息：read_sensing_state(当前快照), query_history(历史基线), consult_fusion(跨模态仲裁)
@@ -23,7 +23,7 @@ TriageDecision 字段说明：
 {
   "level": "L0-L4 之一 (必填)",
   "label": "决策标签 (continuous_observation / resident_alert / family_notification / emergency)",
-  "event_interpretation": "当前事件的医学解读 (必填)",
+  "event_interpretation": "当前事件的看护风险解释 (必填)",
   "evidence_used": ["引用的工具名称列表"],
   "uncertainty": {
     "sensing_quality": "reliable / degraded / unreliable",
@@ -42,7 +42,7 @@ TriageDecision 字段说明：
 - L1: 轻度偏离，持续观察
 - L2: 异常，需要提醒居民
 - L3: 持续异常，通知家属
-- L4: 紧急情况，立即通知紧急联系人"""
+- L4: 紧急情况，立即通知紧急联系人 (如持续跌倒/生命体征严重异常)"""
 
 
 class DiagnosisAgent:
@@ -148,6 +148,7 @@ class DiagnosisAgent:
                 ))
 
         # ── Max steps exceeded → fallback to L0 ──
+        evidence = self._build_evidence(event, tool_results)
         action_result = issue_action_tool("L0", "max steps reached, defaulting")
         episode_result = write_episode_tool(
             resident_id=self.resident_id,
@@ -155,6 +156,7 @@ class DiagnosisAgent:
             decision_level="L0",
             decision_explanation="max steps reached, default to L0",
             action_message="max steps reached, defaulting",
+            evidence=evidence,
         )
         return EpisodeLog(
             episode_id=episode_result.get(
@@ -163,7 +165,7 @@ class DiagnosisAgent:
             resident_id=self.resident_id,
             start_time=start_time,
             end_time=datetime.now(),
-            evidence={},
+            evidence=evidence,
             decision={
                 "level": "L0",
                 "explanation": "max steps reached, default to L0",
@@ -205,6 +207,30 @@ class DiagnosisAgent:
             ChatMessage(role="user", content=context),
         ]
 
+    @staticmethod
+    def validate_triage_decision(d: dict) -> dict:
+        """校验 TriageDecision schema 约束，返回校验后的 dict。
+        
+        校验项：
+        - level ∈ L0-L4 (由 caller 确保)
+        - safety_boundary == care_support_only
+        - evidence_used 是 list
+        - uncertainty 是 dict
+        - action 是 dict
+        """
+        # safety_boundary 强校验
+        sb = d.get("safety_boundary", "care_support_only")
+        if sb != "care_support_only":
+            d["safety_boundary"] = "care_support_only"
+        # 类型校验
+        if not isinstance(d.get("evidence_used", []), list):
+            d["evidence_used"] = []
+        if not isinstance(d.get("uncertainty", {}), dict):
+            d["uncertainty"] = {"sensing_quality": "unknown", "missing_evidence": [], "needs_recheck": True}
+        if not isinstance(d.get("action", {}), dict):
+            d["action"] = {}
+        return d
+
     def _try_parse_decision(self, content: str) -> Optional[dict]:
         """通过花括号匹配提取首个有效 JSON 决策。
         
@@ -235,6 +261,7 @@ class DiagnosisAgent:
                             })
                             d.setdefault("action", {})
                             d.setdefault("safety_boundary", "care_support_only")
+                            d = self.validate_triage_decision(d)
                             return d
                     except json.JSONDecodeError:
                         start = -1  # false positive, keep scanning
