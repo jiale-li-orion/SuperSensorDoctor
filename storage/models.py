@@ -129,3 +129,17 @@ def query_episodes_by_resident(resident_id: str, limit: int = 50) -> list[dict]:
             LIMIT ?
         """, (resident_id, limit)).fetchall()
         return [_row_to_dict(r) for r in rows]
+
+
+# ── Latest Sensing Window ──
+
+def query_latest_sensing_window(resident_id: str) -> dict:
+    """返回该居民最新的完整传感窗口 (含所有字段)"""
+    with get_db() as conn:
+        row = conn.execute("""
+            SELECT * FROM sensing_windows
+            WHERE resident_id=?
+            ORDER BY timestamp DESC
+            LIMIT 1
+        """, (resident_id,)).fetchone()
+        return _row_to_dict(row)
