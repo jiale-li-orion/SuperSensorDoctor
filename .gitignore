@@ -1,0 +1,17 @@
+# .gitignore
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+*.db
+*.csv
+*.xlsx
+.env
+.opencode/
+.slim/
+data/raw/
+*.log
+.DS_Store
