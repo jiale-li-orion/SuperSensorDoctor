@@ -79,13 +79,13 @@ The full technical report covers the complete end-to-end system. This repo focus
 
 ## Cross-Modal Fusion Arbitration
 
-When the Diagnosis Agent needs to resolve conflicting estimates across modalities, it uses a 3-step chain (implemented as callable tools):
+When the Diagnosis Agent needs to resolve conflicting estimates across modalities, it uses a 3-step chain returning a structured `FusionResult`:
 
-| Step | Name | Logic |
-|------|------|-------|
-| 1 | Confidence Evaluation | Check each modality's confidence score; check `nlos_flag` (mmWave known-failure indicator) |
-| 2 | Consistency Check | Compute cross-modal delta: Δf = |f_wifi − f_mm|; check historical trend deviation |
-| 3 | Arbitration | NLOS → WiFi dominates; both reliable → confidence-weighted fusion; conflict → trust the reliable branch |
+| Step | Name | Logic | Output |
+|------|------|-------|--------|
+| 1 | Confidence Evaluation | Check each modality's confidence score; check `nlos_flag` (mmWave known-failure) | `estimates` — per-modality value/confidence |
+| 2 | Consistency Check | Compute cross-modal delta + confidence gap | `checks` — delta, consistent, confidence_gap |
+| 3 | Arbitration | NLOS → WiFi dominates; both reliable → fusion; conflict → trust reliable branch | `verdict` — fused_value, dominant_modality, rationale |
 
 **Arbitration priority**: fall alert > NLOS switching > confidence arbitration > semantic merging.
 
@@ -101,9 +101,11 @@ When the Diagnosis Agent needs to resolve conflicting estimates across modalitie
 
 ### Diagnosis Agent (ReAct Think/Act Loop)
 
-- **Think phase**: Calls LLM without tools → analyzes event + resident baseline → attempts to output JSON decision.
-- **Act phase**: If no decision parsed, calls LLM with tools → executes `tool_call` via ToolRegistry → appends result to message history → repeats.
-- **Tool system**: 5 registered tools — `query_history`, `get_latest_vitals`, `list_recent_events`, `check_resident_context`, `trend_analysis`.
+- **Think phase**: Calls LLM without tools → analyzes event + resident baseline → attempts to output JSON TriageDecision.
+- **Act phase**: If no decision parsed, calls LLM with tools → executes `tool_call` via ToolRegistry → appends result to message history → repeats. Tool results captured in evidence chain.
+- **Tool system**: 9 registered tools (3 categories: Evidence/Action/Persistence). See Tool Taxonomy above.
+- **Decision schema**: `TriageDecision` — `{"level": "L2", "label": "resident_alert", "event_interpretation": "...", "evidence_used": [...], "uncertainty": {"sensing_quality": "reliable", ...}, "action": {"channel": "screen", ...}, "safety_boundary": "care_support_only"}`
+- **JSON parser**: Brace-counting extractor (handles nested TriageDecision objects, unlike simple regex).
 - **Fallback**: Returns L0 (silent record) if `max_steps` exceeded without parseable decision.
 
 ### Report Agent
@@ -121,13 +123,27 @@ When the Diagnosis Agent needs to resolve conflicting estimates across modalitie
 | L3 | 家属告警 | family_push | 持续异常，已通知家属 | 1800s |
 | L4 | 紧急告警 | emergency | 立即联系居民确认状态 | 60s |
 
+### Tool Taxonomy
+
+| Category | Tool | Function |
+|----------|------|----------|
+| **Evidence Tools** | `query_history` | 查询个人历史基线，计算均值/极值 |
+| | `get_latest_vitals` | 最新生命体征快照 |
+| | `read_sensing_state` | 最新多模态传感快照 (含置信度/NLOS/跌倒/活动) |
+| | `list_recent_events` | 最近的异常事件列表 |
+| | `check_resident_context` | 居民传感器元数据上下文 |
+| | `trend_analysis` | 指标在时间窗口内的趋势 (升/降/稳定) |
+| | `consult_fusion` | 三步链式跨模态仲裁 (estimates → checks → verdict) |
+| **Action Tools** | `issue_action` | 解析 L0–L4 分级行动方案 (channel/recheck) |
+| **Persistence Tools** | `write_episode` | 写入可审计诊断事件记录 (含完整 evidence 链) |
+
 ### Auditable Episode Record
 
 Every Diagnosis Agent interaction is recorded as an `EpisodeLog` containing:
 
-- `decision`: `{"level": "L2", "explanation": "...", "action_message": "..."}`
+- `evidence`: `{"event": {...}, "sensing_summary": {...}, "tool_results": [...]}` — full audit chain
+- `decision`: `{"level": "L2", "label": "resident_alert", "event_interpretation": "...", "evidence_used": [...], "uncertainty": {...}}` — TriageDecision schema
 - `action`: `{"channel": "screen", "message": "...", "recheck_after": 600}`
-- `evidence`: `{"sensing_summary": {"heart_rate": 120, ...}}`
 - `audit`: `{"tools_called": ["query_history"], "step_count": 3, "event_id": "..."}`
 
 The LLM's private reasoning chain is not stored; only the auditable summary is persisted.
@@ -158,7 +174,7 @@ ubicomp/
 ├── web/                        # Web UI
 │   ├── app.py                  # FastAPI 入口 (3 routes: /, /api/replay/start, /api/health)
 │   └── templates/dashboard.html # 医生工作站 Jinja2 模板
-├── tests/                      # 测试 (41 cases, pytest + pytest-asyncio)
+├── tests/                      # 测试 (66 cases, pytest + pytest-asyncio)
 │   ├── test_state_objects.py   # 4 tests
 │   ├── test_db.py              # 3 tests
 │   ├── test_event_bus.py       # 4 tests
@@ -184,7 +200,7 @@ ubicomp/
 - **FastAPI + Jinja2** — Web doctor workstation
 - **SQLite (WAL mode)** — Local persistent storage with PRAGMA foreign_keys
 - **DeepSeek V4 API** — LLM Provider via OpenAI-compatible HTTP endpoint
-- **pytest + pytest-asyncio** — 41 tests across 10 test files
+- **pytest + pytest-asyncio** — 66 tests across 10 test files
 
 ## Key Design Decisions
 
@@ -196,6 +212,12 @@ ubicomp/
 | **SQLite JSON columns** | `evidence`, `decision`, `action`, `audit` stored as TEXT (JSON). Parsed to dict at the web layer before template rendering. |
 | **Single-resident mode** | `resident_id = "resident_01"` for paper demo. Schema supports multi-resident via indexed columns. |
 | **Deterministic replay** | Seeded `random.Random(42)` for reproducible synthetic data generation with configurable anomaly injection windows. |
+
+## 悬置事项
+
+| 事项 | 阻塞原因 | 预计解除 |
+|------|----------|----------|
+| `modalities_json` / `fusion_json` 字段 | 等待队友提供 per-modality 数据模型格式。DB schema 已有 `sensing_windows` 表支撑，但需补充每个模态独立估计值后才能构建完整 `FusionResult.estimates`。 | TBD |
 
 ## Getting Started
 
@@ -218,7 +240,7 @@ make run
 
 ```
 pytest tests/ -v
-# 41 passed in ~32s
+# 66 passed in ~39s
 ```
 
 ## Data Privacy & MCP Vision
