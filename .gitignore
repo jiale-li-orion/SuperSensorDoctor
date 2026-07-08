@@ -1,19 +1,34 @@
 # .gitignore
 __pycache__/
+.pytest_cache/
 *.py[cod]
 *.egg-info/
 dist/
 build/
 .venv/
 venv/
+
+# 数据库
 *.db
 *.db-wal
 *.db-shm
+
+# 原始数据文件 (队友提供)
 *.csv
 *.xlsx
+data/
+
+# 文档 (技术报告等)
+*.docx
+*.pdf
+*.pptx
+
+# Office 临时文件
+~$*
+
+# 环境 / 配置
 .env
 .opencode/
 .slim/
-data/raw/
 *.log
 .DS_Store
