@@ -144,7 +144,7 @@ class DiagnosisAgent:
             if not resp.tool_calls:
                 messages.append(ChatMessage(
                     role="user",
-                    content="请输出 JSON 格式的决策，包含 level、explanation 和 action_message。",
+                    content="请输出 JSON 格式的 TriageDecision，包含 level、event_interpretation、evidence_used 和 uncertainty。",
                 ))
 
         # ── Max steps exceeded → fallback to L0 ──

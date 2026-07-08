@@ -67,7 +67,7 @@ class TriageDecision:
     
     level:       L0-L4 必填 (严格校验)
     label:       对应级别的人类可读标签
-    event_interpretation: 当前事件的医学解读
+    event_interpretation: 当前事件的看护风险解释
     evidence_used:  本次诊断引用的工具名列表
     uncertainty:    不确定性声明 (可选, missing 时用默认值)
     action:         推荐行动方案 (可选)

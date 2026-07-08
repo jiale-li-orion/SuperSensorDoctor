@@ -1,34 +1,32 @@
+
 # .gitignore
-__pycache__/
-.pytest_cache/
-*.py[cod]
-*.egg-info/
-dist/
-build/
-.venv/
-venv/
-
-# 数据库
-*.db
-*.db-wal
-*.db-shm
-
+# Office 临时文件
 # 原始数据文件 (队友提供)
-*.csv
-*.xlsx
-data/
-
+# 数据库
 # 文档 (技术报告等)
+# 环境 / 配置
+*.csv
+*.db
+*.db-shm
+*.db-wal
 *.docx
+*.egg-info/
+*.log
 *.pdf
 *.pptx
-
-# Office 临时文件
-~$*
-
-# 环境 / 配置
+*.py[cod]
+*.xlsx
+.DS_Store
 .env
 .opencode/
+.pytest_cache/
 .slim/
-*.log
-.DS_Store
+.slim/deepwork/
+.venv/
+2026.7.8待修.md
+__pycache__/
+build/
+data/
+dist/
+venv/
+~$*
