@@ -151,11 +151,12 @@ def test_consult_fusion_both_reliable_consistent():
     """Both WiFi and mmWave reliable → fusion dominant"""
     result = consult_fusion_tool("resident_01", "hr")
     assert result["status"] == "ok"
-    assert result["dominant_modality"] == "fusion"
-    assert result["value"] == 72.0
-    assert result["confidence_assessment"]["wifi_reliable"] is True
-    assert result["confidence_assessment"]["mmwave_reliable"] is True
-    assert result["confidence_assessment"]["consistent"] is True
+    assert result["verdict"]["dominant_modality"] == "fusion"
+    assert result["verdict"]["fused_value"] == 72.0
+    assert result["estimates"]["wifi"]["confidence"] == 0.9
+    assert result["estimates"]["mmwave"]["confidence"] == 0.85
+    assert result["estimates"]["mmwave"]["nlos_flag"] is False
+    assert result["checks"]["consistent"] is True
 
 
 def test_consult_fusion_nlos_occlusion():
@@ -168,8 +169,8 @@ def test_consult_fusion_nlos_occlusion():
     )
     result = consult_fusion_tool("resident_01", "rr")
     assert result["status"] == "ok"
-    assert result["dominant_modality"] == "wifi"
-    assert "NLOS" in result["rationale"]
+    assert result["verdict"]["dominant_modality"] == "wifi"
+    assert "NLOS" in result["verdict"]["rationale"]
 
 
 def test_consult_fusion_wifi_reliable_only():
@@ -181,8 +182,8 @@ def test_consult_fusion_wifi_reliable_only():
         nlos_flag=False,
     )
     result = consult_fusion_tool("resident_01", "hr")
-    assert result["dominant_modality"] == "wifi"
-    assert "mmWave confidence too low" in result["rationale"]
+    assert result["verdict"]["dominant_modality"] == "wifi"
+    assert "mmWave confidence too low" in result["verdict"]["rationale"]
 
 
 def test_consult_fusion_mmwave_reliable_only():
@@ -194,8 +195,8 @@ def test_consult_fusion_mmwave_reliable_only():
         nlos_flag=False,
     )
     result = consult_fusion_tool("resident_01", "hr")
-    assert result["dominant_modality"] == "mmwave"
-    assert "WiFi confidence too low" in result["rationale"]
+    assert result["verdict"]["dominant_modality"] == "mmwave"
+    assert "WiFi confidence too low" in result["verdict"]["rationale"]
 
 
 def test_consult_fusion_both_low_fallback():
@@ -207,14 +208,35 @@ def test_consult_fusion_both_low_fallback():
         nlos_flag=False,
     )
     result = consult_fusion_tool("resident_01", "hr")
-    assert result["dominant_modality"] == "wifi_fallback"
-    assert "unreliable" in result["rationale"].lower()
+    assert result["verdict"]["dominant_modality"] == "wifi_fallback"
+    assert "unreliable" in result["verdict"]["rationale"].lower()
 
 
 def test_consult_fusion_no_data():
     """No data for unknown resident"""
     result = consult_fusion_tool("nonexistent", "hr")
     assert result["status"] == "no_data"
+
+
+def test_fusion_result_has_three_sections():
+    """FusionResult contains estimates, checks, verdict sections"""
+    result = consult_fusion_tool("resident_01", "hr")
+    assert "estimates" in result
+    assert "checks" in result
+    assert "verdict" in result
+
+    # estimates contains per-modality keys
+    assert "wifi" in result["estimates"]
+    assert "mmwave" in result["estimates"]
+
+    # checks contains consistency info
+    assert "consistent" in result["checks"]
+    assert "confidence_gap" in result["checks"]
+
+    # verdict contains fused output
+    assert "fused_value" in result["verdict"]
+    assert "dominant_modality" in result["verdict"]
+    assert "rationale" in result["verdict"]
 
 
 # ── New Tool Tests: write_episode ──

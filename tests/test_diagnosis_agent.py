@@ -155,3 +155,66 @@ class TestDiagnosisAgent:
         assert log.audit["step_count"] >= 1
         assert "query_history" in log.audit["tools_called"]
         assert log.audit["event_id"] == "evt_001"
+
+
+class TestEvidenceChain:
+    """Phase 5+7: evidence collection during DiagnosisAgent loop"""
+
+    @pytest.mark.asyncio
+    async def test_episode_contains_evidence_chain(self):
+        """EpisodeLog.evidence contains event, sensing_summary, tool_results"""
+        decision_json = '{"level": "L1", "explanation": "checking evidence chain"}'
+        provider = MockProvider(response=decision_json)
+
+        r = ToolRegistry()
+        @tool(name="query_history", description="hist", parameters={"m": {"type": "string"}})
+        def query_history(m: str) -> str:
+            return {"status": "ok", "mean": 72.0}
+
+        r.register(query_history)
+        agent = DiagnosisAgent(
+            resident_id="resident_01",
+            llm_provider=provider,
+            tool_registry=r,
+            max_steps=3,
+        )
+        provider._tool_calls = [{
+            "id": "call_ev", "type": "function",
+            "function": {"name": "query_history", "arguments": '{"m": "hr"}'},
+        }]
+        log = await agent.handle_event(make_hr_event())
+
+        # evidence has top-level keys
+        assert "event" in log.evidence
+        assert "sensing_summary" in log.evidence
+        assert "tool_results" in log.evidence
+        assert log.evidence["event"]["event_type"] == "hr_abnormal"
+        assert log.evidence["sensing_summary"]["heart_rate"] == 120.0
+
+    @pytest.mark.asyncio
+    async def test_evidence_tool_results_not_empty(self):
+        """When agent calls tools, evidence.tool_results captures them"""
+        decision_json = '{"level": "L1", "explanation": "checking tool capture"}'
+        provider = MockProvider(response=decision_json)
+
+        r = ToolRegistry()
+        @tool(name="ping", description="ping", parameters={"x": {"type": "string"}})
+        def ping(x: str) -> str:
+            return f"pong:{x}"
+
+        r.register(ping)
+        agent = DiagnosisAgent(
+            resident_id="resident_01",
+            llm_provider=provider,
+            tool_registry=r,
+            max_steps=2,
+        )
+        provider._tool_calls = [{
+            "id": "call_p", "type": "function",
+            "function": {"name": "ping", "arguments": '{"x": "test"}'},
+        }]
+        log = await agent.handle_event(make_hr_event())
+
+        assert len(log.evidence["tool_results"]) > 0
+        assert log.evidence["tool_results"][0]["tool"] == "ping"
+        assert "result" in log.evidence["tool_results"][0]

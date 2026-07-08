@@ -59,3 +59,20 @@ class EpisodeLog:
     decision: dict = field(default_factory=dict)    # {"level": "L2", "label": "...", ...}
     action: dict = field(default_factory=dict)      # {"channel": "screen", ...}
     audit: dict = field(default_factory=dict)       # {"tools_called": [...], "step_count": 3}
+
+
+@dataclass
+class FusionResult:
+    """三步链式跨模态仲裁的标准证据对象。
+    
+    estimates: 各模态的独立估计值 (Phase 6 前使用同一融合值)
+    checks:    置信度一致性检查结果
+    verdict:   最终的仲裁输出 (模态选择 + 融合值 + 理由)
+    
+    NOTE: Until Phase 6 provides per-modality sensor data, the same fused
+    value is used for all modalities in estimates — only confidence differs.
+    """
+    metric: str
+    estimates: dict
+    checks: dict
+    verdict: dict

@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime, timedelta
 from functools import wraps
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 from dataclasses import dataclass, field
 
 
@@ -320,15 +320,27 @@ def consult_fusion_tool(resident_id: str, metric: str) -> dict:
     return {
         "status": "ok",
         "metric": metric,
-        "value": fused_value,
-        "dominant_modality": dominant,
-        "rationale": rationale,
-        "confidence_assessment": {
-            "wifi_reliable": wifi_reliable,
-            "mmwave_reliable": mmwave_reliable,
-            "nlos_occlusion": nlos,
-            "conf_gap": round(conf_gap, 2),
+        "estimates": {
+            "wifi": {
+                "value": value,
+                "confidence": round(wifi_conf, 2),
+            },
+            "mmwave": {
+                "value": value,
+                "confidence": round(mmwave_conf, 2),
+                "nlos_flag": nlos,
+            },
+        },
+        "checks": {
+            "delta": round(abs((value or 0) - (value or 0)), 1),
             "consistent": consistent,
+            "confidence_gap": round(conf_gap, 2),
+            "quality_event": False,
+        },
+        "verdict": {
+            "fused_value": value,
+            "dominant_modality": dominant,
+            "rationale": rationale,
         },
     }
 
@@ -351,6 +363,7 @@ def write_episode_tool(
     resident_id: str, event_id: str,
     decision_level: str, decision_explanation: str,
     action_message: str = "",
+    evidence: Optional[dict] = None,
 ) -> dict:
     """写入可审计诊断事件记录"""
     from storage import models
@@ -365,7 +378,7 @@ def write_episode_tool(
         event_id=event_id,
         resident_id=resident_id,
         start_time=datetime.now(),
-        evidence={},
+        evidence=evidence or {},
         decision={
             "level": decision_level,
             "explanation": decision_explanation,
