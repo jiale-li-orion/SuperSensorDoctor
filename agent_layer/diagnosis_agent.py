@@ -10,6 +10,7 @@ from agent_layer.state_objects import StateObject, HealthEvent, EpisodeLog
 from agent_layer.llm_provider import LLMProvider, ChatMessage, ChatResponse
 from agent_layer.tools import ToolRegistry
 from agent_layer.tiered_action import ActionLevel, resolve_action
+from agent_layer.tools import issue_action_tool, write_episode_tool
 
 
 SYSTEM_PROMPT = """你是一个家庭健康诊断医生。你的工作流程：
@@ -75,9 +76,26 @@ class DiagnosisAgent:
             # ── Think phase: try to parse decision from response content ──
             decision = self._try_parse_decision(resp.content)
             if decision:
-                action_cfg = resolve_action(decision.get("level", "L0"))
+                level = decision.get("level", "L0")
+                action_msg = decision.get("action_message", "")
+
+                # Use new tools for action resolution + persistence
+                action_result = issue_action_tool(level, action_msg)
+                episode_result = write_episode_tool(
+                    resident_id=self.resident_id,
+                    event_id=event.event_id,
+                    decision_level=level,
+                    decision_explanation=decision.get("explanation", ""),
+                    action_message=action_msg,
+                )
+
+                tools_called.append("issue_action")
+                tools_called.append("write_episode")
+
                 return EpisodeLog(
-                    episode_id=f"ep_{uuid.uuid4().hex[:8]}",
+                    episode_id=episode_result.get(
+                        "episode_id", f"ep_{uuid.uuid4().hex[:8]}"
+                    ),
                     resident_id=self.resident_id,
                     start_time=start_time,
                     end_time=datetime.now(),
@@ -90,12 +108,11 @@ class DiagnosisAgent:
                     },
                     decision=decision,
                     action={
-                        "channel": action_cfg["channel"],
-                        "message": decision.get(
-                            "action_message", action_cfg["message"]
-                        ),
-                        "recheck_after": decision.get(
-                            "recheck_after_sec", action_cfg["recheck_after_sec"]
+                        "channel": action_result["channel"],
+                        "message": action_result["message"],
+                        "recheck_after": action_result.get(
+                            "recheck_after_sec",
+                            resolve_action(level)["recheck_after_sec"],
                         ),
                     },
                     audit={
@@ -113,9 +130,18 @@ class DiagnosisAgent:
                 ))
 
         # ── Max steps exceeded → fallback to L0 ──
-        action_cfg = resolve_action("L0")
+        action_result = issue_action_tool("L0", "max steps reached, defaulting")
+        episode_result = write_episode_tool(
+            resident_id=self.resident_id,
+            event_id=event.event_id,
+            decision_level="L0",
+            decision_explanation="max steps reached, default to L0",
+            action_message="max steps reached, defaulting",
+        )
         return EpisodeLog(
-            episode_id=f"ep_{uuid.uuid4().hex[:8]}",
+            episode_id=episode_result.get(
+                "episode_id", f"ep_{uuid.uuid4().hex[:8]}"
+            ),
             resident_id=self.resident_id,
             start_time=start_time,
             end_time=datetime.now(),
@@ -125,9 +151,12 @@ class DiagnosisAgent:
                 "explanation": "max steps reached, default to L0",
             },
             action={
-                "channel": action_cfg["channel"],
-                "message": action_cfg["message"],
-                "recheck_after": action_cfg["recheck_after_sec"],
+                "channel": action_result["channel"],
+                "message": action_result["message"],
+                "recheck_after": action_result.get(
+                    "recheck_after_sec",
+                    resolve_action("L0")["recheck_after_sec"],
+                ),
             },
             audit={
                 "tools_called": tools_called,

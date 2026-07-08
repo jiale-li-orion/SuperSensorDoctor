@@ -1,11 +1,35 @@
 """Tests for DiagnosisAgent Think/Act ReAct loop"""
 
+import os
 import pytest
 from datetime import datetime
 from agent_layer.state_objects import StateObject, HealthEvent
 from agent_layer.llm_provider import MockProvider, ChatMessage
 from agent_layer.tools import ToolRegistry, tool
 from agent_layer.diagnosis_agent import DiagnosisAgent
+from storage.db import init_db, DB_PATH
+from storage.models import insert_sensing_window, insert_health_event
+
+
+@pytest.fixture(autouse=True)
+def clean_db():
+    """Initialize the DB and create FK parent rows before each test."""
+    init_db()
+    # ── parent rows needed by write_episode_tool FK constraints ──
+    insert_sensing_window(
+        window_id="w1", timestamp=datetime.now(),
+        heart_rate=72.0,
+    )
+    insert_health_event(
+        event_id="evt_001", window_id="w1",
+        event_type="hr_abnormal", timestamp=datetime.now(),
+        trigger_reason="test seed",
+    )
+    yield
+    try:
+        os.remove(DB_PATH)
+    except FileNotFoundError:
+        pass
 
 
 @pytest.fixture
