@@ -1,6 +1,6 @@
 # SuperSenseDoctor — MultiAgent Collaboration Layer
 
-Ubicomp 论文投稿项目。多模态无接触健康监测系统的 Agent 协作层实现。
+多模态无接触健康监测系统的 Agent 协作层实现。
 
 ## Architecture
 
