@@ -51,9 +51,9 @@ async def dashboard(request: Request):
 
 
 @app.post("/api/replay/start")
-async def start_replay():
-    """启动合成数据回放"""
-    hub = SensorHub()
+async def start_replay(request: Request):
+    """启动合成数据回放 — 通过 app.state.sensor_hub 进入完整 Agent 链路"""
+    hub = getattr(request.app.state, "sensor_hub", None) or SensorHub()
     count = 0
     for state in ReplayEngine.generate_synthetic(duration_sec=30):
         await hub.compose(
@@ -64,8 +64,12 @@ async def start_replay():
                 "respiration_rate": state.respiration_rate,
                 "body_temp": state.body_temp,
                 "wifi_confidence": state.wifi_confidence,
+                "mmwave_confidence": state.mmwave_confidence,
+                "thermal_confidence": state.thermal_confidence,
+                "nlos_flag": state.nlos_flag,
                 "fall_status": state.fall_status,
-                "source": "synthetic",
+                "activity_state": state.activity_state,
+                "source": state.source,
             },
         )
         count += 1

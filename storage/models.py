@@ -1,7 +1,7 @@
 """数据访问层 — 封装常用查询"""
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 from storage.db import get_db
 
@@ -16,6 +16,7 @@ def _row_to_dict(row) -> dict:
 
 def insert_sensing_window(
     window_id: str, timestamp: datetime,
+    resident_id: str = "resident_01",
     heart_rate=None, respiration_rate=None, body_temp=None,
     wifi_confidence=1.0, mmwave_confidence=1.0, thermal_confidence=1.0,
     nlos_flag=False, missing_modalities=None, activity_state="unknown",
@@ -24,12 +25,13 @@ def insert_sensing_window(
     with get_db() as conn:
         conn.execute("""
             INSERT OR REPLACE INTO sensing_windows
-            (window_id, timestamp, rr, hr, body_temp, wifi_conf, mmwave_conf,
-             thermal_conf, nlos_flag, missing_mods, activity_state, posture,
-             fall_status, sensor_contact, source)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            (window_id, timestamp, resident_id, rr, hr, body_temp,
+             wifi_conf, mmwave_conf, thermal_conf, nlos_flag, missing_mods,
+             activity_state, posture, fall_status, sensor_contact, source)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             window_id, timestamp.isoformat(),
+            resident_id,
             respiration_rate, heart_rate, body_temp,
             wifi_confidence, mmwave_confidence, thermal_confidence,
             int(nlos_flag), json.dumps(missing_modalities or []),
@@ -45,13 +47,14 @@ VALID_METRIC_COLS = {"heart_rate": "hr", "respiration_rate": "rr", "body_temp": 
 
 def query_recent_windows(resident_id: str, metric: str, minutes: int = 60) -> list[dict]:
     col = VALID_METRIC_COLS[metric]  # KeyError 兜底, 防 SQL 注入
+    threshold = (datetime.now() - timedelta(minutes=minutes)).isoformat()
     with get_db() as conn:
         rows = conn.execute(f"""
             SELECT timestamp, {col} as value, wifi_conf, mmwave_conf
             FROM sensing_windows
-            WHERE resident_id=? AND timestamp >= datetime('now', ?)
+            WHERE resident_id=? AND timestamp >= ?
             ORDER BY timestamp
-        """, (resident_id, f'-{minutes} minutes')).fetchall()
+        """, (resident_id, threshold)).fetchall()
         return [_row_to_dict(r) for r in rows]
 
 

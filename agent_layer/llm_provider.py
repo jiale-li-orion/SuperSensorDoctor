@@ -75,43 +75,83 @@ class DeepSeekProvider(LLMProvider):
         )
 
     async def chat(self, messages: list[ChatMessage]) -> ChatResponse:
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(
-                f"{self.base_url}/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": self.model,
-                    "messages": self._to_api_messages(messages),
-                    "temperature": self.temperature,
-                    "max_tokens": self.max_tokens,
-                },
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(
+                    f"{self.base_url}/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self.api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": self.model,
+                        "messages": self._to_api_messages(messages),
+                        "temperature": self.temperature,
+                        "max_tokens": self.max_tokens,
+                    },
+                )
+                resp.raise_for_status()
+                return self._parse_response(resp.json())
+        except Exception as exc:
+            print(f"[LLM] API call failed: {exc}")
+            return ChatResponse(
+                content=json.dumps({
+                    "level": "L0",
+                    "label": "llm_unavailable",
+                    "event_interpretation": f"LLM API 不可用: {exc}",
+                    "evidence_used": [],
+                    "uncertainty": {
+                        "sensing_quality": "unknown",
+                        "missing_evidence": ["llm_api"],
+                        "needs_recheck": True,
+                    },
+                    "action": {"channel": "none"},
+                    "safety_boundary": "care_support_only",
+                }),
+                tool_calls=[],
+                finish_reason="stop",
             )
-            resp.raise_for_status()
-            return self._parse_response(resp.json())
 
     async def chat_with_tools(
         self, messages: list[ChatMessage], tools: list[dict]
     ) -> ChatResponse:
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(
-                f"{self.base_url}/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": self.model,
-                    "messages": self._to_api_messages(messages),
-                    "tools": tools,
-                    "temperature": self.temperature,
-                    "max_tokens": self.max_tokens,
-                },
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(
+                    f"{self.base_url}/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self.api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": self.model,
+                        "messages": self._to_api_messages(messages),
+                        "tools": tools,
+                        "temperature": self.temperature,
+                        "max_tokens": self.max_tokens,
+                    },
+                )
+                resp.raise_for_status()
+                return self._parse_response(resp.json())
+        except Exception as exc:
+            print(f"[LLM] chat_with_tools failed: {exc}")
+            return ChatResponse(
+                content=json.dumps({
+                    "level": "L0",
+                    "label": "llm_unavailable",
+                    "event_interpretation": f"LLM API 不可用: {exc}",
+                    "evidence_used": [],
+                    "uncertainty": {
+                        "sensing_quality": "unknown",
+                        "missing_evidence": ["llm_api"],
+                        "needs_recheck": True,
+                    },
+                    "action": {"channel": "none"},
+                    "safety_boundary": "care_support_only",
+                }),
+                tool_calls=[],
+                finish_reason="stop",
             )
-            resp.raise_for_status()
-            return self._parse_response(resp.json())
 
 
 class MockProvider(LLMProvider):

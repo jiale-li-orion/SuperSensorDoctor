@@ -111,6 +111,7 @@ class DiagnosisAgent:
                     decision_explanation=decision.get("explanation", ""),
                     action_message=action_msg,
                     evidence=evidence,
+                    tools_called=tools_called,
                 )
 
                 tools_called.append("issue_action")
@@ -157,6 +158,7 @@ class DiagnosisAgent:
             decision_explanation="max steps reached, default to L0",
             action_message="max steps reached, defaulting",
             evidence=evidence,
+            tools_called=tools_called,
         )
         return EpisodeLog(
             episode_id=episode_result.get(

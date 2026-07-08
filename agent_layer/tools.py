@@ -368,6 +368,7 @@ def write_episode_tool(
     action_message: str = "",
     *,
     evidence: Optional[dict] = None,
+    tools_called: Optional[list[str]] = None,
 ) -> dict:
     """写入可审计诊断事件记录"""
     from storage import models
@@ -390,7 +391,7 @@ def write_episode_tool(
         },
         action=action_cfg,
         audit={
-            "tools_called": ["write_episode"],
+            "tools_called": tools_called or ["write_episode"],
             "step_count": 1,
             "event_id": event_id,
         },

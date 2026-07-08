@@ -1,5 +1,6 @@
 """数据回放引擎 — 生成合成数据"""
 
+import uuid
 from datetime import datetime, timedelta
 from typing import Generator
 from agent_layer.state_objects import StateObject
@@ -36,7 +37,7 @@ class ReplayEngine:
                 temp += 1.5  # 体温升高
 
             yield StateObject(
-                window_id=f"syn_{i:04d}",
+                window_id=f"syn_{uuid.uuid4().hex[:4]}_{i:04d}",
                 timestamp=ts,  # datetime 对象, 与 StateObject.timestamp: datetime 类型一致
                 heart_rate=max(40, min(180, round(hr, 1))),
                 respiration_rate=max(8, min(30, round(rr, 1))),

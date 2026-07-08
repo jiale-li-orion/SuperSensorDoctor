@@ -9,7 +9,7 @@ import uvicorn
 from fastapi import FastAPI
 
 from storage.db import init_db
-from storage.models import insert_sensing_window
+from storage.models import insert_sensing_window, insert_health_event, mark_event_handled
 from agent_layer.event_bus import EventBus
 from agent_layer.nurse_agent import NurseAgent
 from agent_layer.diagnosis_agent import DiagnosisAgent
@@ -73,12 +73,24 @@ def create_app(config: dict = None) -> FastAPI:
     @bus.subscribe("fall_detected")
     @bus.subscribe("temp_abnormal")
     async def on_diagnosis_event(event):
-        """Nurse Agent 发布事件 → Diagnosis Agent 处理 (async handler)"""
+        """Nurse Agent 发布事件 → 持久化 health_event → Diagnosis Agent 处理"""
+        # 先持久化 health_event 父行, 满足 episode_logs FK 约束
+        insert_health_event(
+            event_id=event.event_id,
+            window_id=event.state.window_id,
+            event_type=event.event_type,
+            timestamp=event.timestamp,
+            trigger_reason=event.trigger_reason,
+            rule_markers=event.rule_markers,
+        )
         result = await diagnosis.handle_event(event)
+        mark_event_handled(event.event_id)
         print(f"[Diagnosis] {result.episode_id}: L{result.decision.get('level', '?')}")
 
     # Import and return FastAPI app
     from web.app import app as fastapi_app
+    fastapi_app.state.sensor_hub = sensor_hub     # Inject sensor_hub
+    fastapi_app.state.diagnosis_agent = diagnosis  # Inject diagnosis for health checks
     return fastapi_app
 
 

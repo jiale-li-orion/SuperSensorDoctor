@@ -68,8 +68,8 @@
                 {% for ep in recent_episodes %}
                 <li>
                     <span class="badge {{ ep.decision.get('level', 'L0') }}">{{ ep.decision.get('level', 'L0') }}</span>
-                    {{ ep.decision.get('explanation', '') }}
-                    <span style="float:right;color:#999;font-size:12px">{{ ep.start_time[:16] }}</span>
+                    {{ ep.decision.get('event_interpretation', ep.decision.get('explanation', '')) }}
+                    <span style="float:right;color:#999;font-size:12px">{{ ep.start_time[:10] }} {{ ep.start_time[11:16] }}</span>
                 </li>
                 {% else %}
                 <li style="color:#999;">暂无诊断记录</li>
