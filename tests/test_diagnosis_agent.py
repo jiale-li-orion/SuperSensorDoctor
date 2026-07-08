@@ -218,3 +218,70 @@ class TestEvidenceChain:
         assert len(log.evidence["tool_results"]) > 0
         assert log.evidence["tool_results"][0]["tool"] == "ping"
         assert "result" in log.evidence["tool_results"][0]
+
+
+class TestTriageParser:
+    """Phase 8: brace-counting parser for nested TriageDecision JSON"""
+
+    def test_parse_nested_decision(self):
+        """Brace-counting parser handles nested JSON objects"""
+        agent = DiagnosisAgent(
+            resident_id="resident",
+            llm_provider=None,
+            tool_registry=ToolRegistry(),
+            max_steps=2,
+        )
+        content = (
+            '{"level": "L2", "label": "resident_alert", '
+            '"event_interpretation": "HR 15bpm above baseline", '
+            '"evidence_used": ["query_history", "read_sensing_state"], '
+            '"uncertainty": {"sensing_quality": "reliable", '
+            '"missing_evidence": [], "needs_recheck": false}, '
+            '"action": {"channel": "screen", "recheck_after_sec": 600}, '
+            '"safety_boundary": "care_support_only"}'
+        )
+        d = agent._try_parse_decision(content)
+        assert d is not None
+        assert d["level"] == "L2"
+        assert d["label"] == "resident_alert"
+        assert d["uncertainty"]["sensing_quality"] == "reliable"
+        assert d["action"]["channel"] == "screen"
+
+    def test_parse_partial_fills_defaults(self):
+        """Missing optional fields get default values"""
+        # Only level provided — should still parse with defaults
+        content = '{"level": "L1", "event_interpretation": "mild deviation"}'
+        agent = DiagnosisAgent("r", None, ToolRegistry(), 2)
+        d = agent._try_parse_decision(content)
+        assert d is not None
+        assert d["level"] == "L1"
+        # Optional fields get defaults
+        assert d["safety_boundary"] == "care_support_only"
+        assert d["uncertainty"]["needs_recheck"] is True
+
+    def test_parse_rejects_invalid_level(self):
+        """Invalid level returns None"""
+        content = '{"level": "L5", "explanation": "test"}'
+        agent = DiagnosisAgent("r", None, ToolRegistry(), 2)
+        d = agent._try_parse_decision(content)
+        assert d is None
+
+    def test_parse_no_json_returns_none(self):
+        """No JSON at all returns None"""
+        agent = DiagnosisAgent("r", None, ToolRegistry(), 2)
+        d = agent._try_parse_decision("I'm thinking...")
+        assert d is None
+
+    def test_parse_malformed_json_returns_none(self):
+        """Malformed JSON returns None"""
+        agent = DiagnosisAgent("r", None, ToolRegistry(), 2)
+        d = agent._try_parse_decision('{"level": "L1", broken')
+        assert d is None
+
+    def test_parse_flat_decision_still_works(self):
+        """Backward compat: flat JSON still parses"""
+        content = '{"level": "L0", "explanation": "normal"}'
+        agent = DiagnosisAgent("r", None, ToolRegistry(), 2)
+        d = agent._try_parse_decision(content)
+        assert d is not None
+        assert d["level"] == "L0"

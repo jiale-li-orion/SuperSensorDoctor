@@ -62,6 +62,33 @@ class EpisodeLog:
 
 
 @dataclass
+class TriageDecision:
+    """Agent 输出协议 — 固定 schema 使决策可测、可审计。
+    
+    level:       L0-L4 必填 (严格校验)
+    label:       对应级别的人类可读标签
+    event_interpretation: 当前事件的医学解读
+    evidence_used:  本次诊断引用的工具名列表
+    uncertainty:    不确定性声明 (可选, missing 时用默认值)
+    action:         推荐行动方案 (可选)
+    safety_boundary: 安全边界声明 (固定为 care_support_only)
+    
+    NOTE: uncertainty 是 LLM 自评估, 暂不经过 ground truth 校验。
+    """
+    level: str
+    label: str = ""
+    event_interpretation: str = ""
+    evidence_used: list[str] = field(default_factory=list)
+    uncertainty: dict = field(default_factory=lambda: {
+        "sensing_quality": "unknown",
+        "missing_evidence": [],
+        "needs_recheck": True,
+    })
+    action: dict = field(default_factory=dict)
+    safety_boundary: str = "care_support_only"
+
+
+@dataclass
 class FusionResult:
     """三步链式跨模态仲裁的标准证据对象。
     

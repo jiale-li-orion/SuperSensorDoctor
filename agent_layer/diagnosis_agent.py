@@ -1,7 +1,7 @@
 """Diagnosis Agent — Think/Act ReAct 循环"""
 
 import json
-import re
+
 import uuid
 from datetime import datetime
 from typing import Optional
@@ -16,17 +16,33 @@ from agent_layer.tools import issue_action_tool, write_episode_tool
 SYSTEM_PROMPT = """你是一个家庭健康诊断医生。你的工作流程：
 
 1. 【Think】分析当前异常事件与居民历史基线的差异，判断严重程度
-2. 【Act】必要时调用工具查询更多信息
-3. 【Decide】输出 JSON 决策
+2. 【Act】必要时调用工具查询更多信息：read_sensing_state(当前快照), query_history(历史基线), consult_fusion(跨模态仲裁)
+3. 【Decide】输出 JSON 格式的 TriageDecision
+
+TriageDecision 字段说明：
+{
+  "level": "L0-L4 之一 (必填)",
+  "label": "决策标签 (continuous_observation / resident_alert / family_notification / emergency)",
+  "event_interpretation": "当前事件的医学解读 (必填)",
+  "evidence_used": ["引用的工具名称列表"],
+  "uncertainty": {
+    "sensing_quality": "reliable / degraded / unreliable",
+    "missing_evidence": ["缺失的证据/工具"],
+    "needs_recheck": true/false
+  },
+  "action": {
+    "channel": "none / screen / family_push / emergency",
+    "recheck_after_sec": 300
+  },
+  "safety_boundary": "care_support_only"
+}
 
 决策级别：
 - L0: 正常范围，仅记录
 - L1: 轻度偏离，持续观察
 - L2: 异常，需要提醒居民
 - L3: 持续异常，通知家属
-- L4: 紧急情况，立即通知紧急联系人
-
-最终输出必须是 JSON 格式，包含: level, explanation, action_message"""
+- L4: 紧急情况，立即通知紧急联系人"""
 
 
 class DiagnosisAgent:
@@ -190,17 +206,38 @@ class DiagnosisAgent:
         ]
 
     def _try_parse_decision(self, content: str) -> Optional[dict]:
-        m = re.search(
-            r'\{[^{}]*"level"[^{}]*\}', content, re.DOTALL
-        )
-        if not m:
-            return None
-        try:
-            d = json.loads(m.group())
-            if d.get("level") in self.VALID_LEVELS:
-                return d
-        except json.JSONDecodeError:
-            return None
+        """通过花括号匹配提取首个有效 JSON 决策。
+        
+        支持嵌套 JSON (如 action: {"channel": "screen"})，
+        不像简单的 regex 会被花括号打断。
+        """
+        depth = 0
+        start = -1
+        for i, ch in enumerate(content):
+            if ch == '{':
+                if depth == 0:
+                    start = i
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0 and start >= 0:
+                    try:
+                        d = json.loads(content[start:i + 1])
+                        if d.get("level") in self.VALID_LEVELS:
+                            # Apply defaults for optional fields
+                            d.setdefault("label", "")
+                            d.setdefault("event_interpretation", "")
+                            d.setdefault("evidence_used", [])
+                            d.setdefault("uncertainty", {
+                                "sensing_quality": "unknown",
+                                "missing_evidence": [],
+                                "needs_recheck": True,
+                            })
+                            d.setdefault("action", {})
+                            d.setdefault("safety_boundary", "care_support_only")
+                            return d
+                    except json.JSONDecodeError:
+                        start = -1  # false positive, keep scanning
         return None
 
     def _build_evidence(self, event: HealthEvent,
