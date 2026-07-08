@@ -1,7 +1,23 @@
 """SuperSenseDoctor — Agent Layer 启动入口"""
 
+import asyncio
 import yaml
+import os
 from pathlib import Path
+
+import uvicorn
+from fastapi import FastAPI
+
+from storage.db import init_db
+from storage.models import insert_sensing_window
+from agent_layer.event_bus import EventBus
+from agent_layer.nurse_agent import NurseAgent
+from agent_layer.diagnosis_agent import DiagnosisAgent
+from agent_layer.report_agent import ReportAgent
+from agent_layer.llm_provider import DeepSeekProvider
+from agent_layer.tools import create_default_tools
+from sensing_simulator.replay_engine import ReplayEngine
+from sensing_simulator.sensor_hub import SensorHub
 
 CONFIG_PATH = Path(__file__).parent / "config.yaml"
 
@@ -11,10 +27,73 @@ def load_config() -> dict:
         return yaml.safe_load(f)
 
 
+def create_app(config: dict = None) -> FastAPI:
+    """创建 FastAPI 应用并初始化 Agent 层"""
+    if config is None:
+        config = load_config()
+
+    # 初始化数据库
+    init_db()
+
+    # 初始化 Event Bus
+    bus = EventBus()
+
+    # 初始化 Agent 层
+    nurse = NurseAgent(
+        event_bus=bus,
+        hr_deviation=config["agents"]["nurse"]["threshold_hr_deviation"],
+        temp_deviation=config["agents"]["nurse"]["threshold_temp_deviation"],
+    )
+
+    # LLM Provider
+    llm_config = config["llm"]
+    llm = DeepSeekProvider(
+        api_key=os.getenv("DEEPSEEK_API_KEY", llm_config.get("api_key", "")),
+        model=llm_config["model"],
+        base_url=llm_config["base_url"],
+        temperature=llm_config["temperature"],
+    )
+
+    tools = create_default_tools()
+    diagnosis = DiagnosisAgent(
+        resident_id="resident_01",
+        llm_provider=llm,
+        tool_registry=tools,
+        max_steps=config["agents"]["diagnosis"]["max_steps"],
+    )
+
+    sensor_hub = SensorHub(nurse=nurse)
+
+    # 注册 Agent 到 Event Bus
+    @bus.subscribe("*")
+    def on_event(event):
+        print(f"[EventBus] {event.event_type}: {event.trigger_reason}")
+
+    @bus.subscribe("hr_abnormal")
+    @bus.subscribe("fall_detected")
+    @bus.subscribe("temp_abnormal")
+    async def on_diagnosis_event(event):
+        """Nurse Agent 发布事件 → Diagnosis Agent 处理 (async handler)"""
+        result = await diagnosis.handle_event(event)
+        print(f"[Diagnosis] {result.episode_id}: L{result.decision.get('level', '?')}")
+
+    # Import and return FastAPI app
+    from web.app import app as fastapi_app
+    return fastapi_app
+
+
 def main():
     config = load_config()
     print(f"SuperSenseDoctor Agent Layer starting...")
-    print(f"LLM: {config['llm']['provider']}/{config['llm']['model']}")
+    print(f"  LLM: {config['llm']['provider']}/{config['llm']['model']}")
+    print(f"  DB: {config['storage']['db_path']}")
+
+    app = create_app(config)
+    uvicorn.run(
+        app,
+        host=config["web"]["host"],
+        port=config["web"]["port"],
+    )
 
 
 if __name__ == "__main__":
