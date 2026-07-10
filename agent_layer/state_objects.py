@@ -46,6 +46,7 @@ class HealthEvent:
     state: StateObject
     trigger_reason: str       # 触发原因原文
     rule_markers: dict = field(default_factory=dict)
+    context: Optional['NurseRuleContext'] = None      # Phase H: NurseRuleContext 上下文
 
 
 @dataclass
@@ -103,3 +104,18 @@ class FusionResult:
     estimates: dict
     checks: dict
     verdict: dict
+
+
+@dataclass
+class NurseRuleContext:
+    """NurseAgent 单次 evaluate() 的完整上下文。
+    
+    current_state:  当前 S_t
+    personal_baseline: {mean, std, z_score, value} 或 None
+    recent_windows: 最近 10 分钟的传感窗口列表
+    duration_sec:   当前类型异常已持续的秒数 (来自 DurationTracker)
+    """
+    current_state: 'StateObject'
+    personal_baseline: Optional[dict] = None
+    recent_windows: list = field(default_factory=list)
+    duration_sec: int = 0

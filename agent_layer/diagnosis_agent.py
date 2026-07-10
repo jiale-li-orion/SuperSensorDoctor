@@ -296,9 +296,24 @@ class DiagnosisAgent:
 
     def _build_context(self, event: HealthEvent) -> list[ChatMessage]:
         state = event.state
+
+        # Extract duration from rule_markers if available
+        duration_sec = event.rule_markers.get("duration_sec", 0)
+        duration_str = f", 已持续 {duration_sec}s" if duration_sec > 0 else ""
+
+        # Extract fusion context from rule_markers
+        fusion_lines = []
+        for metric in ["hr", "rr"]:
+            delta = event.rule_markers.get(f"{metric}_modality_delta")
+            dominant = event.rule_markers.get(f"{metric}_dominant")
+            if delta is not None:
+                fusion_lines.append(f"  - {metric}: 模态差异 delta={delta}, 信任 {dominant}")
+
+        fusion_str = "\n" + "\n".join(fusion_lines) if fusion_lines else ""
+
         context = (
             f"异常事件: {event.event_type}\n"
-            f"触发原因: {event.trigger_reason}\n"
+            f"触发原因: {event.trigger_reason}{duration_str}\n"
             f"居民: {self.resident_id}\n\n"
             f"当前体征:\n"
             f"- 心率: {state.heart_rate}\n"
@@ -313,6 +328,7 @@ class DiagnosisAgent:
             f"- 姿势: {state.posture}\n"
             f"- 传感器接触: {state.sensor_contact}\n"
             f"- 缺失模态: {state.missing_modalities}"
+            f"{fusion_str}"
         )
         return [
             ChatMessage(role="system", content=SYSTEM_PROMPT),
@@ -388,6 +404,7 @@ class DiagnosisAgent:
                 "event_type": event.event_type,
                 "trigger_reason": event.trigger_reason,
             },
+            "rule_markers": event.rule_markers,
             "sensing_summary": {
                 "heart_rate": event.state.heart_rate,
                 "respiration_rate": event.state.respiration_rate,

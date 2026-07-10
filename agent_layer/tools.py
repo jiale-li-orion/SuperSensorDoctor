@@ -7,6 +7,9 @@ from functools import wraps
 from typing import Any, Callable, Optional
 from dataclasses import dataclass, field
 
+from agent_layer.baseline_provider import BaselineProvider
+from agent_layer.fusion_engine import FusionEngine
+
 
 @dataclass
 class Tool:
@@ -109,14 +112,35 @@ def query_history_tool(resident_id: str, metric: str, time_range: str) -> dict:
     values = [r.get("value") for r in rows if r.get("value") is not None]
     if not values:
         return {"status": "no_data"}
-    return {
+
+    # Basic stats
+    n = len(values)
+    mean = round(sum(values) / n, 1)
+    result = {
         "status": "ok",
-        "count": len(values),
-        "mean": round(sum(values) / len(values), 1),
+        "count": n,
+        "mean": mean,
         "min": round(min(values), 1),
         "max": round(max(values), 1),
         "recent_values": values[-10:],
     }
+
+    # Baseline enrichment: z_score and std from BaselineProvider
+    try:
+        bp = BaselineProvider()
+        baseline = bp.compute_metric(
+            resident_id=resident_id,
+            metric=col_metric,
+            value=values[-1],  # most recent value
+            at_timestamp=datetime.now(),
+        )
+        if baseline is not None:
+            result["z_score"] = baseline.get("z_score")
+            result["std"] = baseline.get("std")
+    except Exception:
+        pass  # baseline enrichment is best-effort
+
+    return result
 
 
 @tool(
@@ -272,95 +296,56 @@ def read_sensing_state_tool(resident_id: str) -> dict:
     },
 )
 def consult_fusion_tool(resident_id: str, metric: str) -> dict:
-    """三步链式跨模态融合仲裁"""
+    """三步链式跨模态融合仲裁 (delegates to FusionEngine)"""
     from storage import models
+    from agent_layer.modality_synthesizer import parse_modalities
+
     row = models.query_latest_sensing_window(resident_id)
     if not row:
         return {"status": "no_data", "message": "No sensing data for fusion"}
 
-    col_metric = {"hr": "hr", "rr": "rr"}.get(metric)
-    value = row.get(col_metric)
-    wifi_conf = row.get("wifi_conf", 0.0) or 0.0
-    mmwave_conf = row.get("mmwave_conf", 0.0) or 0.0
-    nlos = bool(row.get("nlos_flag", False))
+    # Build StateObject from DB row
+    from datetime import datetime
+    from agent_layer.state_objects import StateObject
 
-    # Step 0: Parse per-modality estimates from modalities_json
-    from agent_layer.modality_synthesizer import parse_modalities, get_modality_estimate
+    state = StateObject(
+        window_id=row.get("window_id", ""),
+        timestamp=datetime.fromisoformat(row["timestamp"]) if isinstance(row.get("timestamp"), str) else datetime.now(),
+        heart_rate=row.get("hr"),
+        respiration_rate=row.get("rr"),
+        body_temp=row.get("body_temp"),
+        wifi_confidence=row.get("wifi_conf", 0.0) or 0.0,
+        mmwave_confidence=row.get("mmwave_conf", 0.0) or 0.0,
+        thermal_confidence=row.get("thermal_conf", 0.0) or 0.0,
+        nlos_flag=bool(row.get("nlos_flag", False)),
+        fall_status=row.get("fall_status"),
+        activity_state=row.get("activity_state", "unknown"),
+        posture=row.get("posture"),
+        sensor_contact=row.get("sensor_contact"),
+        missing_modalities=eval(row.get("missing_mods", "[]")),  # list from JSON string
+    )
+
+    # Delegate to FusionEngine
+    engine = FusionEngine()
+    result = engine.fuse(state, metric)
+
+    # Detect if we had real per-modality data
     mods = parse_modalities(row.get("modalities_json"))
-
-    wifi_value = get_modality_estimate(mods, "wifi", metric) if mods else None
-    mmwave_value = get_modality_estimate(mods, "mmwave", metric) if mods else None
-
-    # Fall back to fused value if per-modality data unavailable
-    wifi_value = wifi_value if wifi_value is not None else value
-    mmwave_value = mmwave_value if mmwave_value is not None else value
-
-    # Step 1: Confidence Evaluation
-    wifi_reliable = wifi_conf >= 0.7
-    mmwave_reliable = mmwave_conf >= 0.7 and not nlos
-    nlos_flag = nlos  # mmWave known-failure when NLOS
-
-    # Step 2: Consistency check — compare per-modality estimates
-    wifi_v = wifi_value or 0
-    mmwave_v = mmwave_value or 0
-    estimate_delta = abs(wifi_v - mmwave_v)
-    consistent = estimate_delta < 5.0  # within 5 bpm/bpm threshold
-    conf_gap = abs(wifi_conf - mmwave_conf)
-
-    # Step 3: Arbitration
-    if nlos:
-        # NLOS → WiFi dominates
-        dominant = "wifi"
-        fused_value = wifi_value if wifi_value is not None else value
-        rationale = "mmWave degraded by NLOS, trusting WiFi"
-    elif wifi_reliable and mmwave_reliable and consistent:
-        # Both reliable and consistent → confidence-weighted fusion
-        dominant = "fusion"
-        total = wifi_conf + mmwave_conf
-        fused_value = round(
-            (wifi_v * wifi_conf + mmwave_v * mmwave_conf) / total, 1
-        ) if total > 0 else wifi_v
-        rationale = "Both modalities consistent, confidence-weighted fusion"
-    elif wifi_reliable and not mmwave_reliable:
-        dominant = "wifi"
-        fused_value = wifi_v
-        rationale = "mmWave confidence too low, trusting WiFi"
-    elif mmwave_reliable and not wifi_reliable:
-        dominant = "mmwave"
-        fused_value = mmwave_v
-        rationale = "WiFi confidence too low, trusting mmWave"
-    else:
-        # Conflict or both low → fall back to WiFi
-        dominant = "wifi_fallback"
-        fused_value = wifi_v
-        rationale = "Both modalities unreliable, falling back to WiFi"
+    data_mode = "per_modality" if mods else "fused_value_proxy"
 
     return {
         "status": "ok",
         "metric": metric,
-        "estimates": {
-            "wifi": {
-                "value": wifi_value,
-                "confidence": round(wifi_conf, 2),
-            },
-            "mmwave": {
-                "value": mmwave_value,
-                "confidence": round(mmwave_conf, 2),
-                "nlos_flag": nlos,
-            },
-        },
+        "estimates": result.estimates,
         "checks": {
-            "delta": round(estimate_delta, 1),
-            "consistent": consistent,
-            "confidence_gap": round(conf_gap, 2),
+            **result.checks,
+            "confidence_gap": round(
+                abs((row.get("wifi_conf", 0.0) or 0.0) - (row.get("mmwave_conf", 0.0) or 0.0)), 2
+            ),
             "quality_event": False,
-            "data_mode": "per_modality" if mods else "fused_value_proxy",
+            "data_mode": data_mode,
         },
-        "verdict": {
-            "fused_value": fused_value,
-            "dominant_modality": dominant,
-            "rationale": rationale,
-        },
+        "verdict": result.verdict,
     }
 
 

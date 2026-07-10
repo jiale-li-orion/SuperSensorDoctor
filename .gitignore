@@ -20,8 +20,9 @@
 .env
 .opencode/
 .pytest_cache/
-.slim/
-.slim/deepwork/
+.slim/*
+!.slim/deepwork/
+!.slim/deepwork/**
 .venv/
 2026.7.8待修.md
 __pycache__/
@@ -33,3 +34,5 @@ venv/
 
 # 队友采集融合算法
 portable/
+!.slim/deepwork/
+!.slim/deepwork/**

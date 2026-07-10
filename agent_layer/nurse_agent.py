@@ -3,12 +3,14 @@
 from datetime import datetime, timedelta
 from typing import Optional
 from agent_layer.event_bus import EventBus
-from agent_layer.state_objects import StateObject, HealthEvent
+from agent_layer.state_objects import StateObject, HealthEvent, NurseRuleContext
+from agent_layer.baseline_provider import BaselineProvider
 from agent_layer.confidence import (
     estimate_wifi_confidence, estimate_mmwave_confidence,
     estimate_thermal_confidence,
 )
 from agent_layer.tiered_action import ActionLevel
+from agent_layer.fusion_engine import FusionEngine
 import uuid
 
 
@@ -21,12 +23,20 @@ class NurseAgent:
         hr_deviation: float = 10.0,
         temp_deviation: float = 1.0,
         observe_duration: int = 300,
+        baseline_provider: Optional[BaselineProvider] = None,
+        z_threshold: float = 2.0,
+        resident_id: str = "resident_01",
     ):
         self.bus = event_bus
         self.hr_deviation = hr_deviation
         self.temp_deviation = temp_deviation
         self.observe_duration = observe_duration
+        self.baseline_provider = baseline_provider
+        self.z_threshold = z_threshold
+        self.resident_id = resident_id
         self._baseline = self._default_baseline()
+        # DurationTracker inline: (event_type, resident_id) -> {"start": ts, "last": ts, "elapsed": float}
+        self._durations: dict[tuple[str, str], dict] = {}
 
     def _default_baseline(self) -> dict:
         return {
@@ -35,8 +45,35 @@ class NurseAgent:
             "temp_mean": 36.5, "temp_std": 0.3,
         }
 
+    # ── Duration Tracker ──────────────────────────────────────────────────
+    def _update_duration(self, event_type: str, resident_id: str, ts: datetime) -> int:
+        """Track elapsed seconds since first consecutive occurrence."""
+        key = (event_type, resident_id)
+        if key not in self._durations:
+            self._durations[key] = {"start": ts, "last": ts, "elapsed": 0.0}
+            return 0
+        entry = self._durations[key]
+        delta = (ts - entry["last"]).total_seconds()
+        entry["elapsed"] += delta
+        entry["last"] = ts
+        return int(entry["elapsed"])
+
+    def _reset_duration(self, event_type: str, resident_id: str):
+        """Reset duration if anomaly is no longer detected."""
+        self._durations.pop((event_type, resident_id), None)
+
+    def _cleanup_stale_durations(self, max_age_sec: int = 3600):
+        """Remove entries that haven't been updated in max_age_sec."""
+        now = datetime.now()
+        stale = [k for k, v in self._durations.items()
+                 if (now - v.get("start", now)).total_seconds() > max_age_sec]
+        for k in stale:
+            self._durations.pop(k, None)
+
+    # ── Main Evaluate ────────────────────────────────────────────────────
     async def evaluate(self, state: StateObject):
         """主入口: 评估一个 StateObject (async — EventBus.publish 是 async)"""
+        self._cleanup_stale_durations()
         events = []
         rule_markers = {"activity_state": state.activity_state}
 
@@ -51,27 +88,71 @@ class NurseAgent:
                 state, "Fall detected", rule_markers,
             ))
 
-        # 规则 2: 心率异常
+        # 规则 2: 心率异常 (z_score 优先, fallback 到固定偏差)
         if state.heart_rate:
+            z_score_used = None
             deviation = abs(state.heart_rate - self._baseline["hr_mean"])
-            if deviation > self.hr_deviation * 2:
-                rule_markers["hr_deviation"] = deviation
+
+            if self.baseline_provider:
+                try:
+                    bl = self.baseline_provider.compute_metric(
+                        self.resident_id, "hr", state.heart_rate, state.timestamp
+                    )
+                    if bl:
+                        z_score_used = abs(bl["z_score"])
+                        deviation = abs(state.heart_rate - bl["mean"])
+                except Exception:
+                    pass
+
+            trigger = z_score_used > self.z_threshold if z_score_used is not None else deviation > self.hr_deviation * 2
+
+            if trigger:
+                rule_markers["hr_deviation"] = round(deviation, 1)
+                if z_score_used is not None:
+                    rule_markers["hr_z_score"] = round(z_score_used, 2)
+                dur = self._update_duration("hr_abnormal", self.resident_id, state.timestamp)
+                if dur > 0:
+                    rule_markers["duration_sec"] = dur
                 events.append(self._make_event(
                     "hr_abnormal", state,
                     f"HR {state.heart_rate:.0f}, deviation {deviation:.0f} bpm",
                     rule_markers,
                 ))
+            else:
+                self._reset_duration("hr_abnormal", self.resident_id)
 
-        # 规则 3: 体温异常
+        # 规则 3: 体温异常 (z_score 优先, fallback 到固定偏差)
         if state.body_temp:
+            z_score_used = None
             dev = abs(state.body_temp - self._baseline["temp_mean"])
-            if dev > self.temp_deviation:
-                rule_markers["temp_deviation"] = dev
+
+            if self.baseline_provider:
+                try:
+                    bl = self.baseline_provider.compute_metric(
+                        self.resident_id, "temp", state.body_temp, state.timestamp
+                    )
+                    if bl:
+                        z_score_used = abs(bl["z_score"])
+                        dev = abs(state.body_temp - bl["mean"])
+                except Exception:
+                    pass
+
+            trigger = z_score_used > self.z_threshold if z_score_used is not None else dev > self.temp_deviation
+
+            if trigger:
+                rule_markers["temp_deviation"] = round(dev, 1)
+                if z_score_used is not None:
+                    rule_markers["temp_z_score"] = round(z_score_used, 2)
+                dur = self._update_duration("temp_abnormal", self.resident_id, state.timestamp)
+                if dur > 0:
+                    rule_markers["duration_sec"] = dur
                 events.append(self._make_event(
                     "temp_abnormal", state,
                     f"Temp {state.body_temp:.1f}°C, deviation {dev:.1f}°C",
                     rule_markers,
                 ))
+            else:
+                self._reset_duration("temp_abnormal", self.resident_id)
 
         # 规则 4: RR 呼吸过缓 (bradypnea)
         if state.respiration_rate is not None and state.respiration_rate < 8:
@@ -122,7 +203,45 @@ class NurseAgent:
                     rule_markers,
                 ))
 
+        # 规则 8: 模态冲突 — WiFi 与 mmWave 估计差异过大
+        if state.heart_rate is not None or state.respiration_rate is not None:
+            try:
+                engine = FusionEngine()
+                for metric in ["hr", "rr"]:
+                    result = engine.fuse(state, metric)
+                    if result.checks.get("consistent") is False:
+                        delta_val = result.checks.get("delta", 0)
+                        rule_markers[f"{metric}_modality_delta"] = round(delta_val, 1)
+                        rule_markers[f"{metric}_dominant"] = result.verdict.get("dominant_modality", "unknown")
+                        rule_markers[f"{metric}_rationale"] = result.verdict.get("rationale", "")
+                        events.append(self._make_event(
+                            "modality_conflict", state,
+                            f"{metric}: WiFi vs mmWave delta={delta_val:.1f}, trusting {result.verdict.get('dominant_modality', 'none')}",
+                            rule_markers,
+                        ))
+            except Exception:
+                pass  # fusion is best-effort
+
+        # ── Phase H: Build NurseRuleContext for downstream ──
+        ctx_duration = max(
+            (v.get("elapsed", 0) for k, v in self._durations.items()
+             if k[0] in ("hr_abnormal", "temp_abnormal", "rr_bradypnea", "rr_tachypnea")),
+            default=0.0,
+        )
+        nurse_context = NurseRuleContext(
+            current_state=state,
+            personal_baseline={
+                "hr_mean": self._baseline["hr_mean"],
+                "temp_mean": self._baseline["temp_mean"],
+                "hr_z_score": rule_markers.get("hr_z_score"),
+                "temp_z_score": rule_markers.get("temp_z_score"),
+            } if rule_markers.get("hr_z_score") or rule_markers.get("temp_z_score") else None,
+            duration_sec=int(ctx_duration),
+        )
+
+        # Publish events with NurseRuleContext attached
         for event in events:
+            event.context = nurse_context
             await self.bus.publish(event)
 
     def update_baseline(self, new_baseline: dict):

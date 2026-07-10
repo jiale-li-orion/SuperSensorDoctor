@@ -16,6 +16,7 @@ from agent_layer.diagnosis_agent import DiagnosisAgent
 from agent_layer.report_agent import ReportAgent
 from agent_layer.llm_provider import DeepSeekProvider
 from agent_layer.tools import create_default_tools
+from agent_layer.baseline_provider import BaselineProvider
 from sensing_simulator.replay_engine import ReplayEngine
 from sensing_simulator.sensor_hub import SensorHub
 
@@ -43,6 +44,7 @@ def create_app(config: dict = None) -> FastAPI:
         event_bus=bus,
         hr_deviation=config["agents"]["nurse"]["threshold_hr_deviation"],
         temp_deviation=config["agents"]["nurse"]["threshold_temp_deviation"],
+        baseline_provider=BaselineProvider(),
     )
 
     # LLM Provider

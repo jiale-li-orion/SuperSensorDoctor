@@ -285,3 +285,66 @@ class TestTriageParser:
         d = agent._try_parse_decision(content)
         assert d is not None
         assert d["level"] == "L0"
+
+
+# ---------------------------------------------------------------------------
+# DiagnosisAgent context upgrade tests (Phase F)
+# ---------------------------------------------------------------------------
+
+class TestDiagnosisAgentContext:
+    """Tests for duration_sec and fusion context in DiagnosisAgent."""
+
+    def test_duration_in_context(self):
+        from agent_layer.diagnosis_agent import DiagnosisAgent
+        from agent_layer.state_objects import HealthEvent, StateObject
+        from agent_layer.tools import ToolRegistry
+        from datetime import datetime
+
+        agent = DiagnosisAgent("r1", None, ToolRegistry())
+        state = StateObject("ctx1", datetime.now(), heart_rate=85.0)
+        event = HealthEvent("e1", "hr_abnormal", datetime.now(), state, "HR high",
+                          rule_markers={"duration_sec": 300, "hr_z_score": 3.5})
+
+        # Override llm_provider to avoid None crash
+        class MockLLM:
+            async def chat(self, msgs): return type('obj', (object,), {'content': '{"level":"L0"}', 'tool_calls': None})
+            async def chat_with_tools(self, msgs, schema): return type('obj', (object,), {'content': '{"level":"L0"}', 'tool_calls': None})
+        agent.llm = MockLLM()
+
+        msgs = agent._build_context(event)
+        ctx = msgs[1].content
+        assert "已持续 300s" in ctx, f"Missing duration in context:\n{ctx}"
+
+    def test_fusion_context_included(self):
+        from agent_layer.diagnosis_agent import DiagnosisAgent
+        from agent_layer.state_objects import HealthEvent, StateObject
+        from agent_layer.tools import ToolRegistry
+        from datetime import datetime
+
+        class MockLLM:
+            async def chat(self, msgs): return type('obj', (object,), {'content': '{"level":"L0"}', 'tool_calls': None})
+            async def chat_with_tools(self, msgs, schema): return type('obj', (object,), {'content': '{"level":"L0"}', 'tool_calls': None})
+
+        agent = DiagnosisAgent("r1", MockLLM(), ToolRegistry())
+        state = StateObject("ctx2", datetime.now(), heart_rate=85.0)
+        event = HealthEvent("e2", "modality_conflict", datetime.now(), state, "HR conflict",
+                          rule_markers={"hr_modality_delta": 8.5, "hr_dominant": "wifi"})
+
+        msgs = agent._build_context(event)
+        ctx = msgs[1].content
+        assert "模态差异" in ctx or "hr_modality_delta" in ctx, f"Missing fusion context:\n{ctx}"
+
+    def test_evidence_includes_rule_markers(self):
+        from agent_layer.diagnosis_agent import DiagnosisAgent
+        from agent_layer.state_objects import HealthEvent, StateObject
+        from agent_layer.tools import ToolRegistry
+        from datetime import datetime
+
+        agent = DiagnosisAgent("r1", None, ToolRegistry())
+        state = StateObject("ctx3", datetime.now(), heart_rate=85.0)
+        event = HealthEvent("e3", "hr_abnormal", datetime.now(), state, "HR high",
+                          rule_markers={"duration_sec": 300})
+
+        ev = agent._build_evidence(event, [])
+        assert "rule_markers" in ev, "Missing rule_markers in evidence"
+        assert ev["rule_markers"]["duration_sec"] == 300
