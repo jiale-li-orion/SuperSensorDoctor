@@ -5,6 +5,7 @@ from typing import Optional
 
 from agent_layer.state_objects import StateObject
 from agent_layer.nurse_agent import NurseAgent
+from agent_layer.modality_synthesizer import synthesize_modalities
 from storage.models import insert_sensing_window
 
 
@@ -18,21 +19,33 @@ class SensorHub:
         """组合并处理一个时间窗口的数据"""
         state = self._to_state_object(window_id, timestamp, data)
 
+        # ── Per-modality synthesis ──
+        modalities_json = synthesize_modalities(state)
+
         # 持久化到 DB
-        insert_sensing_window(
+        result = insert_sensing_window(
             window_id=window_id, timestamp=timestamp,
             heart_rate=data.get("heart_rate"),
             respiration_rate=data.get("respiration_rate"),
             body_temp=data.get("body_temp"),
             wifi_confidence=data.get("wifi_confidence", 1.0),
             mmwave_confidence=data.get("mmwave_confidence", 1.0),
+            thermal_confidence=data.get("thermal_confidence"),
+            nlos_flag=data.get("nlos_flag", False),
+            activity_state=data.get("activity_state", "unknown"),
             fall_status=data.get("fall_status"),
+            sensor_contact=data.get("sensor_contact"),
+            posture=data.get("posture"),
+            missing_modalities=data.get("missing_modalities"),
+            modalities_json=modalities_json,
             source=data.get("source", "replay"),
         )
 
         # 通知 NurseAgent
         if self.nurse:
             await self.nurse.evaluate(state)
+
+        return result
 
     def _to_state_object(self, window_id: str, timestamp: datetime,
                          data: dict) -> StateObject:
@@ -45,7 +58,11 @@ class SensorHub:
             wifi_confidence=data.get("wifi_confidence"),
             mmwave_confidence=data.get("mmwave_confidence"),
             thermal_confidence=data.get("thermal_confidence"),
+            nlos_flag=data.get("nlos_flag", False),
             fall_status=data.get("fall_status"),
             activity_state=data.get("activity_state", "unknown"),
+            sensor_contact=data.get("sensor_contact"),
+            posture=data.get("posture"),
+            missing_modalities=data.get("missing_modalities"),
             source=data.get("source", "replay"),
         )

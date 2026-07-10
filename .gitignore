@@ -30,3 +30,6 @@ data/
 dist/
 venv/
 ~$*
+
+# 队友采集融合算法
+portable/

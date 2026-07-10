@@ -327,41 +327,31 @@ def test_issue_action_empty_message_returns_default():
 # ── Registry Integration ──
 
 def test_create_default_tools_contains_all():
-    """create_default_tools registers all 9 tools"""
+    """create_default_tools registers all 7 tools (write_episode/issue_action are orchestrator-only)"""
     registry = create_default_tools()
     expected = {
         "query_history", "read_sensing_state", "consult_fusion",
-        "write_episode", "issue_action",
         "get_latest_vitals", "list_recent_events",
         "check_resident_context", "trend_analysis",
     }
     assert set(registry.names) == expected
 
 
-def test_new_tools_executable_via_registry():
-    """New tools execute correctly when called through the registry"""
-    registry = create_default_tools()
+def test_new_tools_executable_directly():
+    """write_episode and issue_action work when called directly (orchestrator-only, not in registry)"""
+    from agent_layer.tools import write_episode_tool, issue_action_tool
 
-    # read_sensing_state
-    r1 = registry.execute("read_sensing_state", {"resident_id": "resident_01"})
-    assert r1["status"] == "ok"
-
-    # consult_fusion
-    r2 = registry.execute("consult_fusion", {"resident_id": "resident_01", "metric": "hr"})
-    assert r2["status"] == "ok"
-
-    # write_episode
-    r3 = registry.execute(
-        "write_episode", {
-            "resident_id": "resident_01",
-            "event_id": "he_test",
-            "decision_level": "L1",
-            "decision_explanation": "test via registry",
-        }
-    )
-    assert r3["status"] == "ok"
-
-    # issue_action
-    r4 = registry.execute("issue_action", {"level": "L3", "message": "test"})
+    # issue_action direct call
+    r4 = issue_action_tool("L3", "test")
     assert r4["status"] == "ok"
     assert r4["level"] == "L3"
+
+    # write_episode_tool direct call (uses he_test seeded by clean_db fixture)
+    r3 = write_episode_tool(
+        resident_id="resident_01", event_id="he_test",
+        decision={"level": "L1", "label": "direct_test", "event_interpretation": "direct",
+                  "evidence_used": [], "uncertainty": {}, "action": {},
+                  "safety_boundary": "care_support_only"},
+    )
+    assert r3["status"] == "ok"
+    assert r3["level"] == "L1"

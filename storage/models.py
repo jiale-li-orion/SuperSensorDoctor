@@ -19,7 +19,7 @@ def insert_sensing_window(
     resident_id: str = "resident_01",
     heart_rate=None, respiration_rate=None, body_temp=None,
     wifi_confidence=1.0, mmwave_confidence=1.0, thermal_confidence=1.0,
-    nlos_flag=False, missing_modalities=None, activity_state="unknown",
+    nlos_flag=False, missing_modalities=None, modalities_json=None, activity_state="unknown",
     posture=None, fall_status=None, sensor_contact=None, source="replay",
 ) -> dict:
     with get_db() as conn:
@@ -27,14 +27,16 @@ def insert_sensing_window(
             INSERT OR REPLACE INTO sensing_windows
             (window_id, timestamp, resident_id, rr, hr, body_temp,
              wifi_conf, mmwave_conf, thermal_conf, nlos_flag, missing_mods,
+             modalities_json,
              activity_state, posture, fall_status, sensor_contact, source)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             window_id, timestamp.isoformat(),
             resident_id,
             respiration_rate, heart_rate, body_temp,
             wifi_confidence, mmwave_confidence, thermal_confidence,
             int(nlos_flag), json.dumps(missing_modalities or []),
+            modalities_json,
             activity_state, posture, fall_status, sensor_contact, source,
         ))
         row = conn.execute(
@@ -50,7 +52,7 @@ def query_recent_windows(resident_id: str, metric: str, minutes: int = 60) -> li
     threshold = (datetime.now() - timedelta(minutes=minutes)).isoformat()
     with get_db() as conn:
         rows = conn.execute(f"""
-            SELECT timestamp, {col} as value, wifi_conf, mmwave_conf
+            SELECT timestamp, {col} as value, wifi_conf, mmwave_conf, modalities_json
             FROM sensing_windows
             WHERE resident_id=? AND timestamp >= ?
             ORDER BY timestamp

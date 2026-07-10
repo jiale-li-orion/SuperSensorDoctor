@@ -65,6 +65,45 @@ class DiagnosisAgent:
     async def handle_event(self, event: HealthEvent) -> EpisodeLog:
         """主入口: 处理一个异常事件"""
         start_time = datetime.now()
+
+        # ── Reflex arc: fast-path bypass LLM for known patterns ──
+        reflex_decision = self._check_reflex(event)
+        if reflex_decision:
+            evidence = self._build_evidence(event, [])
+            tools_called: list[str] = [f"nurse_rule:{event.event_type}", "issue_action", "write_episode"]
+            level = reflex_decision["level"]
+            action_result = issue_action_tool(level, reflex_decision.get("action", {}).get("message", ""))
+            episode_result = write_episode_tool(
+                resident_id=self.resident_id,
+                event_id=event.event_id,
+                decision=reflex_decision,
+                evidence=evidence,
+                tools_called=tools_called,
+                step_count=0,
+            )
+            return EpisodeLog(
+                episode_id=episode_result.get("episode_id", f"ep_{uuid.uuid4().hex[:8]}"),
+                resident_id=self.resident_id,
+                start_time=start_time,
+                end_time=datetime.now(),
+                evidence=evidence,
+                decision=reflex_decision,
+                action={
+                    "channel": action_result["channel"],
+                    "message": action_result["message"],
+                    "recheck_after": action_result.get(
+                        "recheck_after_sec",
+                        resolve_action(level)["recheck_after_sec"],
+                    ),
+                },
+                audit={
+                    "tools_called": tools_called,
+                    "step_count": 0,
+                    "event_id": event.event_id,
+                    "reflex": True,
+                },
+            )
+
         messages = self._build_context(event)
         tools_called: list[str] = []
         tool_results: list[dict] = []
@@ -99,23 +138,20 @@ class DiagnosisAgent:
             decision = self._try_parse_decision(resp.content)
             if decision:
                 level = decision.get("level", "L0")
-                action_msg = decision.get("action_message", "")
                 evidence = self._build_evidence(event, tool_results)
-
-                # Use new tools for action resolution + persistence
-                action_result = issue_action_tool(level, action_msg)
-                episode_result = write_episode_tool(
-                    resident_id=self.resident_id,
-                    event_id=event.event_id,
-                    decision_level=level,
-                    decision_explanation=decision.get("explanation", ""),
-                    action_message=action_msg,
-                    evidence=evidence,
-                    tools_called=tools_called,
-                )
 
                 tools_called.append("issue_action")
                 tools_called.append("write_episode")
+                # Use new tools for action resolution + persistence
+                action_result = issue_action_tool(level, decision.get("action", {}).get("message", ""))
+                episode_result = write_episode_tool(
+                    resident_id=self.resident_id,
+                    event_id=event.event_id,
+                    decision=decision,
+                    evidence=evidence,
+                    tools_called=tools_called,
+                    step_count=step + 1,
+                )
 
                 return EpisodeLog(
                     episode_id=episode_result.get(
@@ -150,15 +186,29 @@ class DiagnosisAgent:
 
         # ── Max steps exceeded → fallback to L0 ──
         evidence = self._build_evidence(event, tool_results)
+        fallback_decision = {
+            "level": "L0",
+            "label": "fallback_max_steps",
+            "event_interpretation": "max steps reached, defaulting to silent record",
+            "evidence_used": [t.split("(")[0] for t in tools_called] if tools_called else [],
+            "uncertainty": {
+                "sensing_quality": "unknown",
+                "missing_evidence": ["llm_decision"],
+                "needs_recheck": True,
+            },
+            "action": {"channel": "none", "recheck_after_sec": 300},
+            "safety_boundary": "care_support_only",
+        }
+        tools_called.append("issue_action")
+        tools_called.append("write_episode")
         action_result = issue_action_tool("L0", "max steps reached, defaulting")
         episode_result = write_episode_tool(
             resident_id=self.resident_id,
             event_id=event.event_id,
-            decision_level="L0",
-            decision_explanation="max steps reached, default to L0",
-            action_message="max steps reached, defaulting",
+            decision=fallback_decision,
             evidence=evidence,
             tools_called=tools_called,
+            step_count=self.max_steps,
         )
         return EpisodeLog(
             episode_id=episode_result.get(
@@ -187,6 +237,63 @@ class DiagnosisAgent:
             },
         )
 
+    @staticmethod
+    def _check_reflex(event: HealthEvent) -> Optional[dict]:
+        """Reflex arc: bypass LLM for known event patterns.
+
+        Returns a TriageDecision dict if reflex applies, None otherwise.
+        """
+        state = event.state
+
+        # Crisis patterns (L4)
+        if event.event_type == "fall_detected":
+            return {
+                "level": "L4",
+                "label": "emergency",
+                "event_interpretation": "跌倒伴随生理指标异常，需要立即干预",
+                "evidence_used": ["nurse_rule:fall_detected"],
+                "uncertainty": {
+                    "sensing_quality": "reliable",
+                    "missing_evidence": [],
+                    "needs_recheck": True,
+                },
+                "action": {"channel": "emergency", "message": "跌倒伴随生理指标异常，需要立即干预", "recheck_after_sec": 60},
+                "safety_boundary": "care_support_only",
+            }
+
+        # Critical vital patterns (L3)
+        if event.event_type == "rr_bradypnea":
+            return {
+                "level": "L3",
+                "label": "family_notification",
+                "event_interpretation": f"呼吸过缓 (RR={state.respiration_rate})，需要家属关注",
+                "evidence_used": ["nurse_rule:rr_bradypnea"],
+                "uncertainty": {
+                    "sensing_quality": "reliable",
+                    "missing_evidence": [],
+                    "needs_recheck": True,
+                },
+                "action": {"channel": "family_push", "message": f"呼吸过缓 (RR={state.respiration_rate})，需要家属关注", "recheck_after_sec": 300},
+                "safety_boundary": "care_support_only",
+            }
+
+        if event.event_type == "rr_tachypnea":
+            return {
+                "level": "L3",
+                "label": "family_notification",
+                "event_interpretation": f"呼吸急促 (RR={state.respiration_rate})，需要家属关注",
+                "evidence_used": ["nurse_rule:rr_tachypnea"],
+                "uncertainty": {
+                    "sensing_quality": "reliable",
+                    "missing_evidence": [],
+                    "needs_recheck": True,
+                },
+                "action": {"channel": "family_push", "message": f"呼吸急促 (RR={state.respiration_rate})，需要家属关注", "recheck_after_sec": 300},
+                "safety_boundary": "care_support_only",
+            }
+
+        return None
+
     def _build_context(self, event: HealthEvent) -> list[ChatMessage]:
         state = event.state
         context = (
@@ -202,7 +309,10 @@ class DiagnosisAgent:
             f"- 置信度(WiFi/mmWave/红外): "
             f"{state.wifi_confidence}/{state.mmwave_confidence}/"
             f"{state.thermal_confidence}\n"
-            f"- NLOS: {state.nlos_flag}"
+            f"- NLOS: {state.nlos_flag}\n"
+            f"- 姿势: {state.posture}\n"
+            f"- 传感器接触: {state.sensor_contact}\n"
+            f"- 缺失模态: {state.missing_modalities}"
         )
         return [
             ChatMessage(role="system", content=SYSTEM_PROMPT),
@@ -287,6 +397,10 @@ class DiagnosisAgent:
                 "mmwave_confidence": event.state.mmwave_confidence,
                 "nlos_flag": event.state.nlos_flag,
                 "activity_state": event.state.activity_state,
+                "thermal_confidence": event.state.thermal_confidence,
+                "posture": event.state.posture,
+                "sensor_contact": event.state.sensor_contact,
+                "missing_modalities": event.state.missing_modalities,
             },
             "tool_results": tool_results,
         }

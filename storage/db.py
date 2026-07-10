@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS sensing_windows (
     thermal_conf  REAL DEFAULT 1.0,
     nlos_flag     INTEGER DEFAULT 0,
     missing_mods  TEXT DEFAULT '[]',
+    modalities_json TEXT,
     activity_state TEXT DEFAULT 'unknown',
     posture       TEXT,
     fall_status   TEXT,
@@ -65,3 +66,8 @@ def get_db() -> sqlite3.Connection:
 def init_db():
     with get_db() as conn:
         conn.executescript(SCHEMA_SQL)
+        # Phase C: add modalities_json column if not present
+        try:
+            conn.execute("ALTER TABLE sensing_windows ADD COLUMN modalities_json TEXT")
+        except conn.OperationalError:
+            pass  # column already exists

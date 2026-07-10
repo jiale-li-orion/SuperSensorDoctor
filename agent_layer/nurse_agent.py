@@ -73,6 +73,55 @@ class NurseAgent:
                     rule_markers,
                 ))
 
+        # 规则 4: RR 呼吸过缓 (bradypnea)
+        if state.respiration_rate is not None and state.respiration_rate < 8:
+            rule_markers["rr_deviation"] = 8 - state.respiration_rate
+            events.append(self._make_event(
+                "rr_bradypnea", state,
+                f"RR {state.respiration_rate:.0f} < 8, 呼吸过缓",
+                rule_markers,
+            ))
+
+        # 规则 5: RR 呼吸急促 (tachypnea)
+        if state.respiration_rate is not None and state.respiration_rate > 30:
+            rule_markers["rr_deviation"] = state.respiration_rate - 30
+            events.append(self._make_event(
+                "rr_tachypnea", state,
+                f"RR {state.respiration_rate:.0f} > 30, 呼吸急促",
+                rule_markers,
+            ))
+
+        # 规则 6: 低置信度 (双模态 < 0.5)
+        if (state.wifi_confidence is not None and state.mmwave_confidence is not None
+                and state.wifi_confidence < 0.5 and state.mmwave_confidence < 0.5):
+            rule_markers["wifi_conf"] = state.wifi_confidence
+            rule_markers["mmwave_conf"] = state.mmwave_confidence
+            events.append(self._make_event(
+                "low_confidence", state,
+                f"WiFi={state.wifi_confidence:.2f}, mmWave={state.mmwave_confidence:.2f}, 双模态置信度过低",
+                rule_markers,
+            ))
+
+        # 规则 7: NLOS 遮挡
+        if state.nlos_flag is True:
+            low_conf_any = (
+                (state.wifi_confidence is not None and state.wifi_confidence < 0.3) or
+                (state.mmwave_confidence is not None and state.mmwave_confidence < 0.3) or
+                (state.thermal_confidence is not None and state.thermal_confidence < 0.3)
+            )
+            if low_conf_any:
+                wifi_str = f"{state.wifi_confidence:.2f}" if state.wifi_confidence is not None else "N/A"
+                mmwave_str = f"{state.mmwave_confidence:.2f}" if state.mmwave_confidence is not None else "N/A"
+                thermal_str = f"{state.thermal_confidence:.2f}" if state.thermal_confidence is not None else "N/A"
+                rule_markers["wifi_conf"] = state.wifi_confidence
+                rule_markers["mmwave_conf"] = state.mmwave_confidence
+                rule_markers["thermal_conf"] = state.thermal_confidence
+                events.append(self._make_event(
+                    "nlos_occlusion", state,
+                    f"NLOS遮挡, Wi-Fi={wifi_str}, mmWave={mmwave_str}, 红外={thermal_str}",
+                    rule_markers,
+                ))
+
         for event in events:
             await self.bus.publish(event)
 

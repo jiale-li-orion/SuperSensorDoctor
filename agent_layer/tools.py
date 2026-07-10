@@ -1,5 +1,6 @@
 """Agent Tool 系统 — @tool 装饰器 + ToolRegistry"""
 
+import json
 import uuid
 from datetime import datetime, timedelta
 from functools import wraps
@@ -253,6 +254,9 @@ def read_sensing_state_tool(resident_id: str) -> dict:
         "nlos_flag": bool(row.get("nlos_flag", False)),
         "fall_status": row.get("fall_status"),
         "activity_state": row.get("activity_state"),
+        "posture": row.get("posture"),
+        "sensor_contact": bool(row.get("sensor_contact")) if row.get("sensor_contact") is not None else None,
+        "missing_modalities": json.loads(row.get("missing_mods", "[]")),
     }
 
 
@@ -280,41 +284,55 @@ def consult_fusion_tool(resident_id: str, metric: str) -> dict:
     mmwave_conf = row.get("mmwave_conf", 0.0) or 0.0
     nlos = bool(row.get("nlos_flag", False))
 
+    # Step 0: Parse per-modality estimates from modalities_json
+    from agent_layer.modality_synthesizer import parse_modalities, get_modality_estimate
+    mods = parse_modalities(row.get("modalities_json"))
+
+    wifi_value = get_modality_estimate(mods, "wifi", metric) if mods else None
+    mmwave_value = get_modality_estimate(mods, "mmwave", metric) if mods else None
+
+    # Fall back to fused value if per-modality data unavailable
+    wifi_value = wifi_value if wifi_value is not None else value
+    mmwave_value = mmwave_value if mmwave_value is not None else value
+
     # Step 1: Confidence Evaluation
     wifi_reliable = wifi_conf >= 0.7
     mmwave_reliable = mmwave_conf >= 0.7 and not nlos
-    nlof_flag = nlos  # mmWave known-failure when NLOS
+    nlos_flag = nlos  # mmWave known-failure when NLOS
 
-    # Step 2: Consistency check (simplified — we only have one value per metric)
-    # In full implementation, both WiFi and mmWave would report separate estimates.
-    # Here we use confidence delta as a proxy for consistency.
+    # Step 2: Consistency check — compare per-modality estimates
+    wifi_v = wifi_value or 0
+    mmwave_v = mmwave_value or 0
+    estimate_delta = abs(wifi_v - mmwave_v)
+    consistent = estimate_delta < 5.0  # within 5 bpm/bpm threshold
     conf_gap = abs(wifi_conf - mmwave_conf)
-    consistent = conf_gap < 0.3
 
     # Step 3: Arbitration
     if nlos:
         # NLOS → WiFi dominates
         dominant = "wifi"
-        fused_value = value
+        fused_value = wifi_value if wifi_value is not None else value
         rationale = "mmWave degraded by NLOS, trusting WiFi"
     elif wifi_reliable and mmwave_reliable and consistent:
         # Both reliable and consistent → confidence-weighted fusion
-        # (with single value, we keep it but report high confidence)
         dominant = "fusion"
-        fused_value = value
-        rationale = "Both modalities consistent, high confidence"
+        total = wifi_conf + mmwave_conf
+        fused_value = round(
+            (wifi_v * wifi_conf + mmwave_v * mmwave_conf) / total, 1
+        ) if total > 0 else wifi_v
+        rationale = "Both modalities consistent, confidence-weighted fusion"
     elif wifi_reliable and not mmwave_reliable:
         dominant = "wifi"
-        fused_value = value
+        fused_value = wifi_v
         rationale = "mmWave confidence too low, trusting WiFi"
     elif mmwave_reliable and not wifi_reliable:
         dominant = "mmwave"
-        fused_value = value
+        fused_value = mmwave_v
         rationale = "WiFi confidence too low, trusting mmWave"
     else:
         # Conflict or both low → fall back to WiFi
         dominant = "wifi_fallback"
-        fused_value = value
+        fused_value = wifi_v
         rationale = "Both modalities unreliable, falling back to WiFi"
 
     return {
@@ -322,59 +340,77 @@ def consult_fusion_tool(resident_id: str, metric: str) -> dict:
         "metric": metric,
         "estimates": {
             "wifi": {
-                "value": value,
+                "value": wifi_value,
                 "confidence": round(wifi_conf, 2),
             },
             "mmwave": {
-                "value": value,
+                "value": mmwave_value,
                 "confidence": round(mmwave_conf, 2),
                 "nlos_flag": nlos,
             },
         },
         "checks": {
-            "delta": round(abs((value or 0) - (value or 0)), 1),
+            "delta": round(estimate_delta, 1),
             "consistent": consistent,
             "confidence_gap": round(conf_gap, 2),
             "quality_event": False,
-            "data_mode": "fused_value_proxy",
+            "data_mode": "per_modality" if mods else "fused_value_proxy",
         },
         "verdict": {
-            "fused_value": value,
+            "fused_value": fused_value,
             "dominant_modality": dominant,
             "rationale": rationale,
         },
     }
 
 
+# NOTE: write_episode is NOT registered in create_default_tools().
+# It is only called directly by DiagnosisAgent (orchestrator-only).
+# The @tool decorator is used for tool metadata/schema, but the LLM never sees it.
 @tool(
     name="write_episode",
-    description="将诊断事件记录持久化到数据库。在 LLM 做出最终决策后调用此工具保存可审计记录。",
+    description="[Orchestrator Internal] 将诊断事件记录持久化到数据库。不对外暴露。",
     parameters={
         "resident_id": {"type": "string", "description": "居民ID"},
         "event_id": {"type": "string", "description": "触发此诊断的异常事件ID"},
-        "decision_level": {
-            "type": "string", "enum": ["L0", "L1", "L2", "L3", "L4"],
-            "description": "决策级别",
-        },
-        "decision_explanation": {"type": "string", "description": "决策解释"},
-        "action_message": {"type": "string", "description": "行动消息（可选）"},
     },
 )
 def write_episode_tool(
     resident_id: str,
     event_id: str,
-    decision_level: str,
-    decision_explanation: str,
-    action_message: str = "",
+    decision: Optional[dict] = None,
     *,
     evidence: Optional[dict] = None,
     tools_called: Optional[list[str]] = None,
+    step_count: int = 1,
+    decision_level: str = "L0",        # kept for backward compat
+    decision_explanation: str = "",
+    action_message: str = "",
 ) -> dict:
     """写入可审计诊断事件记录"""
     from storage import models
     from agent_layer.tiered_action import resolve_action
 
-    action_cfg = resolve_action(decision_level)
+    # decision dict takes priority, fallback to old scalar params
+    if decision is not None:
+        level = decision.get("level", "L0")
+        label = decision.get("label", "")
+        event_interpretation = decision.get("event_interpretation", "")
+        evidence_used = decision.get("evidence_used", [])
+        uncertainty = decision.get("uncertainty", {})
+        action = decision.get("action", {})
+        safety_boundary = decision.get("safety_boundary", "care_support_only")
+    else:
+        # Backward compat: construct from old scalar params
+        level = decision_level
+        label = ""
+        event_interpretation = decision_explanation
+        evidence_used = []
+        uncertainty = {"sensing_quality": "unknown", "missing_evidence": [], "needs_recheck": True}
+        action = {}
+        safety_boundary = "care_support_only"
+
+    action_cfg = resolve_action(level)
     if action_message:
         action_cfg["message"] = action_message
 
@@ -385,20 +421,25 @@ def write_episode_tool(
         start_time=datetime.now(),
         evidence=evidence or {},
         decision={
-            "level": decision_level,
-            "explanation": decision_explanation,
-            "action_message": action_message,
+            "level": level,
+            "label": label,
+            "event_interpretation": event_interpretation,
+            "evidence_used": evidence_used,
+            "uncertainty": uncertainty,
+            "action": action,
+            "safety_boundary": safety_boundary,
         },
         action=action_cfg,
         audit={
             "tools_called": tools_called or ["write_episode"],
-            "step_count": 1,
+            "step_count": step_count,
             "event_id": event_id,
         },
     )
     return {
         "status": "ok",
         "episode_id": log.get("episode_id"),
+        "level": level,
         "channel": action_cfg["channel"],
         "message": action_cfg["message"],
     }
@@ -437,8 +478,6 @@ def create_default_tools() -> ToolRegistry:
     registry.register(query_history_tool)
     registry.register(read_sensing_state_tool)
     registry.register(consult_fusion_tool)
-    registry.register(write_episode_tool)
-    registry.register(issue_action_tool)
     registry.register(get_latest_vitals_tool)
     registry.register(list_recent_events_tool)
     registry.register(check_resident_context_tool)

@@ -72,6 +72,11 @@ def create_app(config: dict = None) -> FastAPI:
     @bus.subscribe("hr_abnormal")
     @bus.subscribe("fall_detected")
     @bus.subscribe("temp_abnormal")
+    @bus.subscribe("rr_bradypnea")
+    @bus.subscribe("rr_tachypnea")
+    @bus.subscribe("low_confidence")
+    @bus.subscribe("nlos_occlusion")
+    @bus.subscribe("fall_no_physiological_change")
     async def on_diagnosis_event(event):
         """Nurse Agent 发布事件 → 持久化 health_event → Diagnosis Agent 处理"""
         # 先持久化 health_event 父行, 满足 episode_logs FK 约束
