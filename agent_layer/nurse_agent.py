@@ -94,6 +94,9 @@ class NurseAgent:
                 state, "Fall detected", rule_markers,
             ))
 
+        # ── Build real personal baseline dict (used by NurseRuleContext) ──
+        personal_baseline = {}
+
         # 规则 2: 心率异常 (z_score 优先, fallback 到固定偏差)
         if state.heart_rate:
             z_score_used = None
@@ -107,6 +110,13 @@ class NurseAgent:
                     if bl:
                         z_score_used = abs(bl["z_score"])
                         deviation = abs(state.heart_rate - bl["mean"])
+                        personal_baseline["hr"] = {
+                            "value": state.heart_rate,
+                            "mean": bl["mean"],
+                            "std": bl["std"],
+                            "z_score": bl["z_score"],
+                            "source": "RESIDENT_HISTORY",
+                        }
                 except Exception:
                     pass
 
@@ -140,6 +150,13 @@ class NurseAgent:
                     if bl:
                         z_score_used = abs(bl["z_score"])
                         dev = abs(state.body_temp - bl["mean"])
+                        personal_baseline["temp"] = {
+                            "value": state.body_temp,
+                            "mean": bl["mean"],
+                            "std": bl["std"],
+                            "z_score": bl["z_score"],
+                            "source": "RESIDENT_HISTORY",
+                        }
                 except Exception:
                     pass
 
@@ -177,6 +194,41 @@ class NurseAgent:
                 f"RR {state.respiration_rate:.0f} > 30, 呼吸急促",
                 rule_markers,
             ))
+
+        # 规则 5b: RR 个人基线偏离 (z-score, 8 <= RR <= 30)
+        if state.respiration_rate is not None and self.baseline_provider:
+            try:
+                bl = self.baseline_provider.compute_metric(
+                    self.resident_id, "rr", state.respiration_rate, state.timestamp
+                )
+                if bl:
+                    rr_z = abs(bl["z_score"])
+                    personal_baseline["rr"] = {
+                        "value": state.respiration_rate,
+                        "mean": bl["mean"],
+                        "std": bl["std"],
+                        "z_score": bl["z_score"],
+                        "source": "RESIDENT_HISTORY",
+                    }
+                    if (
+                        rr_z > self.z_threshold
+                        and 8 <= state.respiration_rate <= 30
+                    ):
+                        rule_markers["rr_z_score"] = round(rr_z, 2)
+                        dur = self._update_duration(
+                            "rr_baseline_deviation", self.resident_id, state.timestamp
+                        )
+                        if dur > 0:
+                            rule_markers["duration_sec"] = dur
+                        events.append(self._make_event(
+                            "rr_baseline_deviation", state,
+                            f"RR {state.respiration_rate:.0f}, personal baseline {bl['mean']:.1f}±{bl['std']:.1f}, z={bl['z_score']:.2f}",
+                            rule_markers,
+                        ))
+                    else:
+                        self._reset_duration("rr_baseline_deviation", self.resident_id)
+            except Exception:
+                pass
 
         # 规则 6: 低置信度 (双模态 < 0.5)
         if (state.wifi_confidence is not None and state.mmwave_confidence is not None
@@ -248,12 +300,7 @@ class NurseAgent:
 
         nurse_context = NurseRuleContext(
             current_state=state,
-            personal_baseline={
-                "hr_mean": self._baseline["hr_mean"],
-                "temp_mean": self._baseline["temp_mean"],
-                "hr_z_score": rule_markers.get("hr_z_score"),
-                "temp_z_score": rule_markers.get("temp_z_score"),
-            } if rule_markers.get("hr_z_score") or rule_markers.get("temp_z_score") else None,
+            personal_baseline=personal_baseline or None,
             duration_sec=int(ctx_duration),
             recent_windows=recent_windows,
         )

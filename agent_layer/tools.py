@@ -428,6 +428,7 @@ def write_episode_tool(
         label = decision.get("label", "")
         event_interpretation = decision.get("event_interpretation", "")
         evidence_used = decision.get("evidence_used", [])
+        clinical_basis = decision.get("clinical_basis", [])
         uncertainty = decision.get("uncertainty", {})
         action = decision.get("action", {})
         safety_boundary = decision.get("safety_boundary", "care_support_only")
@@ -437,6 +438,7 @@ def write_episode_tool(
         label = ""
         event_interpretation = decision_explanation
         evidence_used = []
+        clinical_basis = []
         uncertainty = {"sensing_quality": "unknown", "missing_evidence": [], "needs_recheck": True}
         action = {}
         safety_boundary = "care_support_only"
@@ -456,6 +458,7 @@ def write_episode_tool(
             "label": label,
             "event_interpretation": event_interpretation,
             "evidence_used": evidence_used,
+            "clinical_basis": clinical_basis,
             "uncertainty": uncertainty,
             "action": action,
             "safety_boundary": safety_boundary,

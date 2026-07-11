@@ -11,38 +11,150 @@ from agent_layer.llm_provider import LLMProvider, ChatMessage, ChatResponse
 from agent_layer.tools import ToolRegistry
 from agent_layer.tiered_action import ActionLevel, resolve_action
 from agent_layer.tools import issue_action_tool, write_episode_tool
+from agent_layer.clinical_policy import (
+    build_clinical_summary,
+    default_clinical_basis,
+    ALLOWED_CLINICAL_SOURCES,
+)
 
 
-SYSTEM_PROMPT = """你是一个家庭看护分级助手。你只基于结构化传感证据、历史基线和工具结果进行看护分级。你的输出用于 care support，不构成医学诊断、治疗建议或用药建议。
+SYSTEM_PROMPT = """
+你是 SuperSenseDoctor 的 evidence-grounded home-care triage agent。
 
-1. 【Think】分析当前异常事件与居民历史基线的差异，判断严重程度
-2. 【Act】必要时调用工具查询更多信息：read_sensing_state(当前快照), query_history(历史基线), consult_fusion(跨模态仲裁)
-3. 【Decide】输出 JSON 格式的 TriageDecision
+你的任务是：
+基于结构化传感证据、个人历史、时间持续性、活动上下文、
+跨模态可靠性和系统提供的临床参考框架，对家庭看护事件进行分级。
 
-TriageDecision 字段说明：
+你不进行疾病诊断，不开药，不提供治疗处方。
+你的输出属于 care support 和 risk triage。
+
+【最重要原则】
+
+1. 区分"测量是否可信"和"生理状态是否异常"
+   - 传感器低置信度不能直接解释成生理恶化。
+   - 跨模态一致只能增强 measurement confidence，
+     不能证明某一种具体疾病。
+   - 如果异常数值来自 unreliable sensing，
+     优先标记 uncertainty、missing evidence 和 recheck。
+
+2. 区分 absolute abnormality 和 personal deviation
+   - absolute_reference 来自系统提供的临床参考区间。
+   - personal_baseline 来自该居民自己的历史。
+   - 个人 z-score 是统计偏离证据，不等于疾病诊断。
+   - 一个值即使没有越过绝对危险区间，
+     仍可能相对于个人长期基线明显异常。
+
+3. 区分 transient fluctuation 和 persistent deviation
+   - 单个窗口不能自动证明持续恶化。
+   - duration_sec 越长，持续性证据越强。
+   - 必须明确当前是否有持续性证据。
+
+4. 必须考虑 activity 和 posture
+   - walking、running、刚起身等活动可能解释 HR/RR 暂时升高。
+   - rest、lying、sleep context 下持续 HR/RR 升高更值得关注。
+   - 不允许忽略 activity_state。
+
+5. 跌倒事件必须考虑证据缺口
+   - 系统可能知道 fall_status，但通常不知道：
+     injury、loss of consciousness、是否能自行起身、
+     是否有反复跌倒历史。
+   - 缺失这些信息时，写入 uncertainty.missing_evidence。
+   - 不允许虚构这些信息。
+
+6. 临床参考来源边界
+   - RCP NEWS2 reference 只用于 HR/RR/temperature 的绝对偏离参考。
+   - 当前系统没有完整 NEWS2 所需参数，
+     禁止声称"已计算 NEWS2 总分"。
+   - NICE NG249 用于跌倒相关证据需求。
+   - personal z-score、5-10 分钟复查和 L0-L4 映射属于项目策略，
+     不得伪装成临床指南原文。
+
+【证据优先顺序】
+
+1. 已配置的 deterministic safety/reflex rule
+2. sensing quality 和 failure flags
+3. absolute physiological reference
+4. personal baseline deviation
+5. persistence / trend
+6. activity / posture context
+7. cross-modal agreement or conflict
+8. historical episodes and previous decisions
+
+【工具使用】
+
+read_sensing_state:
+读取当前结构化传感状态。
+
+query_history:
+读取个人历史、baseline 和 trend。
+
+consult_fusion:
+当 WiFi 和 mmWave 冲突、NLOS、低置信度时，
+读取跨模态仲裁结果。
+
+不要为了"显得像医生"而调用工具。
+只在当前证据不足时调用。
+
+【决策原则】
+
+L0:
+无值得行动的异常证据，仅记录。
+
+L1:
+轻度或短暂偏离；
+证据尚不足；
+需要观察或短期复查。
+
+L2:
+有可信异常，需要提醒居民确认状态。
+
+L3:
+存在持续异常、多个风险证据叠加，
+或需要家属关注。
+
+L4:
+只用于明确的高风险 safety/reflex condition
+或非常强的复合高风险证据。
+不要因为单个轻度异常值直接输出 L4。
+
+选择与现有证据相符的最低干预等级。
+不确定时必须明确 uncertainty，不要伪造确定性。
+
+【输出】
+
+只输出 JSON：
+
 {
-  "level": "L0-L4 之一 (必填)",
-  "label": "决策标签 (continuous_observation / resident_alert / family_notification / emergency)",
-  "event_interpretation": "当前事件的看护风险解释 (必填)",
-  "evidence_used": ["引用的工具名称列表"],
+  "level": "L0-L4",
+  "label": "continuous_observation | resident_alert | family_notification | emergency",
+  "event_interpretation": "基于证据的看护风险解释",
+
+  "evidence_used": [
+    "实际使用过的工具名称"
+  ],
+
+  "clinical_basis": [
+    {
+      "type": "absolute_reference | personal_baseline | persistence | activity_context | sensing_quality | fall_context",
+      "finding": "具体证据及其解释",
+      "source": "RCP_NEWS2_2017_REFERENCE | NICE_NG249_2025 | RESIDENT_HISTORY | SENSOR_FUSION | ACTIVITY_CONTEXT | PROJECT_POLICY"
+    }
+  ],
+
   "uncertainty": {
-    "sensing_quality": "reliable / degraded / unreliable",
-    "missing_evidence": ["缺失的证据/工具"],
-    "needs_recheck": true/false
+    "sensing_quality": "reliable | degraded | unreliable | unknown",
+    "missing_evidence": [],
+    "needs_recheck": true
   },
+
   "action": {
-    "channel": "none / screen / family_push / emergency",
+    "channel": "none | screen | family_push | emergency",
     "recheck_after_sec": 300
   },
+
   "safety_boundary": "care_support_only"
 }
-
-决策级别：
-- L0: 正常范围，仅记录
-- L1: 轻度偏离，持续观察
-- L2: 异常，需要提醒居民
-- L3: 持续异常，通知家属
-- L4: 紧急情况，立即通知紧急联系人 (如持续跌倒/生命体征严重异常)"""
+"""
 
 
 class DiagnosisAgent:
@@ -69,7 +181,12 @@ class DiagnosisAgent:
         # ── Reflex arc: fast-path bypass LLM for known patterns ──
         reflex_decision = self._check_reflex(event)
         if reflex_decision:
-            evidence = self._build_evidence(event, [])
+            clinical_summary = build_clinical_summary(event)
+            reflex_decision.setdefault(
+                "clinical_basis",
+                default_clinical_basis(clinical_summary),
+            )
+            evidence = self._build_evidence(event, [], clinical_summary)
             tools_called: list[str] = [f"nurse_rule:{event.event_type}", "issue_action", "write_episode"]
             level = reflex_decision["level"]
             action_result = issue_action_tool(level, reflex_decision.get("action", {}).get("message", ""))
@@ -138,7 +255,8 @@ class DiagnosisAgent:
             decision = self._try_parse_decision(resp.content)
             if decision:
                 level = decision.get("level", "L0")
-                evidence = self._build_evidence(event, tool_results)
+                clinical_summary = build_clinical_summary(event)
+                evidence = self._build_evidence(event, tool_results, clinical_summary)
 
                 tools_called.append("issue_action")
                 tools_called.append("write_episode")
@@ -185,7 +303,8 @@ class DiagnosisAgent:
                 ))
 
         # ── Max steps exceeded → fallback to L0 ──
-        evidence = self._build_evidence(event, tool_results)
+        clinical_summary = build_clinical_summary(event)
+        evidence = self._build_evidence(event, tool_results, clinical_summary)
         fallback_decision = {
             "level": "L0",
             "label": "fallback_max_steps",
@@ -343,44 +462,62 @@ class DiagnosisAgent:
         return None
 
     def _build_context(self, event: HealthEvent) -> list[ChatMessage]:
+        clinical_summary = build_clinical_summary(event)
         state = event.state
 
-        # Extract duration from rule_markers if available
-        duration_sec = event.rule_markers.get("duration_sec", 0)
-        duration_str = f", 已持续 {duration_sec}s" if duration_sec > 0 else ""
+        context = {
+            "event": {
+                "event_type": event.event_type,
+                "trigger_reason": event.trigger_reason,
+                "timestamp": event.timestamp.isoformat(),
+                "rule_markers": event.rule_markers,
+            },
 
-        # Extract fusion context from rule_markers
-        fusion_lines = []
-        for metric in ["hr", "rr"]:
-            delta = event.rule_markers.get(f"{metric}_modality_delta")
-            dominant = event.rule_markers.get(f"{metric}_dominant")
-            if delta is not None:
-                fusion_lines.append(f"  - {metric}: 模态差异 delta={delta}, 信任 {dominant}")
+            "resident_id": self.resident_id,
 
-        fusion_str = "\n" + "\n".join(fusion_lines) if fusion_lines else ""
+            "current_state": {
+                "heart_rate": state.heart_rate,
+                "respiration_rate": state.respiration_rate,
+                "body_temp": state.body_temp,
 
-        context = (
-            f"异常事件: {event.event_type}\n"
-            f"触发原因: {event.trigger_reason}{duration_str}\n"
-            f"居民: {self.resident_id}\n\n"
-            f"当前体征:\n"
-            f"- 心率: {state.heart_rate}\n"
-            f"- 呼吸率: {state.respiration_rate}\n"
-            f"- 体温: {state.body_temp}\n"
-            f"- 跌倒状态: {state.fall_status}\n"
-            f"- 活动状态: {state.activity_state}\n"
-            f"- 置信度(WiFi/mmWave/红外): "
-            f"{state.wifi_confidence}/{state.mmwave_confidence}/"
-            f"{state.thermal_confidence}\n"
-            f"- NLOS: {state.nlos_flag}\n"
-            f"- 姿势: {state.posture}\n"
-            f"- 传感器接触: {state.sensor_contact}\n"
-            f"- 缺失模态: {state.missing_modalities}"
-            f"{fusion_str}"
-        )
+                "activity_state": state.activity_state,
+                "posture": state.posture,
+                "fall_status": state.fall_status,
+
+                "wifi_confidence": state.wifi_confidence,
+                "mmwave_confidence": state.mmwave_confidence,
+                "thermal_confidence": state.thermal_confidence,
+
+                "nlos_flag": state.nlos_flag,
+                "missing_modalities": state.missing_modalities,
+
+                "hr_wifi": state.hr_wifi,
+                "hr_mm": state.hr_mm,
+                "rr_wifi": state.rr_wifi,
+                "rr_mm": state.rr_mm,
+
+                "hr_conf": state.hr_conf,
+                "rr_conf": state.rr_conf,
+                "quality_event": state.quality_event,
+
+                "hr_source": state.hr_source,
+                "rr_source": state.rr_source,
+            },
+
+            "clinical_summary": clinical_summary,
+        }
+
         return [
             ChatMessage(role="system", content=SYSTEM_PROMPT),
-            ChatMessage(role="user", content=context),
+            ChatMessage(
+                role="user",
+                content=json.dumps(
+                    context,
+                    ensure_ascii=False,
+                    indent=2,
+                    default=str,
+                ),
+            ),
         ]
 
     @staticmethod
@@ -391,6 +528,7 @@ class DiagnosisAgent:
         - level ∈ L0-L4 (由 caller 确保)
         - safety_boundary == care_support_only
         - evidence_used 是 list
+        - clinical_basis 是 list, 每个元素有 allowed source
         - uncertainty 是 dict
         - action 是 dict
         """
@@ -405,6 +543,25 @@ class DiagnosisAgent:
             d["uncertainty"] = {"sensing_quality": "unknown", "missing_evidence": [], "needs_recheck": True}
         if not isinstance(d.get("action", {}), dict):
             d["action"] = {}
+
+        # clinical_basis 校验
+        basis = d.get("clinical_basis", [])
+        if not isinstance(basis, list):
+            basis = []
+        validated_basis = []
+        for item in basis:
+            if not isinstance(item, dict):
+                continue
+            source = item.get("source")
+            if source not in ALLOWED_CLINICAL_SOURCES:
+                continue
+            validated_basis.append({
+                "type": str(item.get("type", "")),
+                "finding": str(item.get("finding", "")),
+                "source": source,
+            })
+        d["clinical_basis"] = validated_basis
+
         return d
 
     def _try_parse_decision(self, content: str) -> Optional[dict]:
@@ -430,6 +587,7 @@ class DiagnosisAgent:
                             d.setdefault("label", "")
                             d.setdefault("event_interpretation", "")
                             d.setdefault("evidence_used", [])
+                            d.setdefault("clinical_basis", [])
                             d.setdefault("uncertainty", {
                                 "sensing_quality": "unknown",
                                 "missing_evidence": [],
@@ -444,7 +602,8 @@ class DiagnosisAgent:
         return None
 
     def _build_evidence(self, event: HealthEvent,
-                        tool_results: list[dict]) -> dict:
+                        tool_results: list[dict],
+                        clinical_summary: Optional[dict] = None) -> dict:
         """构建完整的审计证据链"""
         return {
             "event": {
@@ -486,4 +645,5 @@ class DiagnosisAgent:
                 "duration_sec": 0, "personal_baseline": None,
                 "recent_windows_count": 0, "has_recent_windows": False,
             },
+            "clinical_summary": clinical_summary or build_clinical_summary(event),
         }

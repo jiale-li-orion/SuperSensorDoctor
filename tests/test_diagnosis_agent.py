@@ -313,7 +313,11 @@ class TestDiagnosisAgentContext:
 
         msgs = agent._build_context(event)
         ctx = msgs[1].content
-        assert "已持续 300s" in ctx, f"Missing duration in context:\n{ctx}"
+        import json
+        parsed = json.loads(ctx)
+        persistence = parsed.get("clinical_summary", {}).get("persistence", {})
+        assert persistence.get("duration_sec") == 300, f"Missing persistence.duration_sec in context:\n{ctx}"
+        assert persistence.get("is_persistent_5min") is True, f"Missing is_persistent_5min in context:\n{ctx}"
 
     def test_fusion_context_included(self):
         from agent_layer.diagnosis_agent import DiagnosisAgent

@@ -76,6 +76,7 @@ def create_app(config: dict = None) -> FastAPI:
     @bus.subscribe("temp_abnormal")
     @bus.subscribe("rr_bradypnea")
     @bus.subscribe("rr_tachypnea")
+    @bus.subscribe("rr_baseline_deviation")
     @bus.subscribe("low_confidence")
     @bus.subscribe("nlos_occlusion")
     @bus.subscribe("modality_conflict")

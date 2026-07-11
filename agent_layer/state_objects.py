@@ -93,6 +93,7 @@ class TriageDecision:
     label: str = ""
     event_interpretation: str = ""
     evidence_used: list[str] = field(default_factory=list)
+    clinical_basis: list[dict] = field(default_factory=list)
     uncertainty: dict = field(default_factory=lambda: {
         "sensing_quality": "unknown",
         "missing_evidence": [],
