@@ -67,18 +67,19 @@ class NurseAgent:
         """Reset duration if anomaly is no longer detected."""
         self._durations.pop((event_type, resident_id), None)
 
-    def _cleanup_stale_durations(self, max_age_sec: int = 3600):
+    def _cleanup_stale_durations(self, current_ts: datetime, max_age_sec: int = 3600):
         """Remove entries that haven't been updated in max_age_sec."""
-        now = datetime.now()
+        if current_ts.tzinfo is not None:
+            current_ts = current_ts.replace(tzinfo=None)
         stale = [k for k, v in self._durations.items()
-                 if (now - v.get("start", now)).total_seconds() > max_age_sec]
+                 if (current_ts - v.get("last", current_ts)).total_seconds() > max_age_sec]
         for k in stale:
             self._durations.pop(k, None)
 
     # ── Main Evaluate ────────────────────────────────────────────────────
     async def evaluate(self, state: StateObject):
         """主入口: 评估一个 StateObject (async — EventBus.publish 是 async)"""
-        self._cleanup_stale_durations()
+        self._cleanup_stale_durations(state.timestamp)
         events = []
         rule_markers = {"activity_state": state.activity_state}
 

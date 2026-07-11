@@ -247,6 +247,21 @@ class TestNurseAgentZScore:
         dur2 = events[-1].rule_markers.get('duration_sec', 0)
         assert dur2 >= dur1 or dur2 > 0, f"Duration should accumulate: {dur1} -> {dur2}"
 
+    @pytest.mark.asyncio
+    async def test_duration_tracker_uses_event_time_for_historical_replay(self):
+        """Old replay timestamps should accumulate by event time, not wall-clock now."""
+        bus = EventBus()
+        agent = NurseAgent(event_bus=bus, baseline_provider=None)
+        events = []
+        bus.subscribe('hr_abnormal')(lambda e: events.append(e))
+
+        historical = datetime(2026, 7, 9, 10, 0, 0)
+        await agent.evaluate(StateObject('old1', historical, heart_rate=120.0))
+        await agent.evaluate(StateObject('old2', historical + timedelta(seconds=60), heart_rate=121.0))
+
+        assert len(events) == 2
+        assert events[-1].rule_markers.get('duration_sec', 0) >= 60
+
 
 # ---------------------------------------------------------------------------
 # NurseAgent Rule 8: Modality conflict tests (Phase F)
@@ -284,3 +299,25 @@ class TestNurseAgentModalityConflict:
             heart_rate=None, respiration_rate=None)
         await agent.evaluate(state)
         assert len(events) == 0
+
+    @pytest.mark.asyncio
+    async def test_rule_8_real_per_modality_conflict(self):
+        """Real WiFi/mmWave portable_v2 estimates should trigger conflict."""
+        bus = EventBus()
+        agent = NurseAgent(event_bus=bus)
+        events = []
+        bus.subscribe("modality_conflict")(lambda e: events.append(e))
+
+        state = StateObject(
+            "mct3", datetime.now(),
+            heart_rate=75.0,
+            hr_wifi=70.0,
+            hr_mm=82.0,
+            wifi_confidence=0.9,
+            mmwave_confidence=0.9,
+            hr_conf=0.95,
+        )
+        await agent.evaluate(state)
+        assert len(events) == 1
+        assert events[0].event_type == "modality_conflict"
+        assert events[0].rule_markers["hr_modality_delta"] == 12.0

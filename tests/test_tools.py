@@ -5,7 +5,7 @@ import pytest
 from datetime import datetime, timedelta
 from agent_layer.tools import (
     tool, ToolRegistry, create_default_tools,
-    read_sensing_state_tool, consult_fusion_tool,
+    query_history_tool, read_sensing_state_tool, consult_fusion_tool,
     write_episode_tool, issue_action_tool,
 )
 from storage.db import init_db, DB_PATH
@@ -199,8 +199,8 @@ def test_consult_fusion_mmwave_reliable_only():
     assert "mmWave reliable" in result["verdict"]["rationale"]
 
 
-def test_consult_fusion_both_low_fallback():
-    """Both modalities low confidence → wifi_fallback"""
+def test_consult_fusion_both_low_quality_event():
+    """Both modalities low confidence → no fused value + quality event"""
     insert_sensing_window(
         window_id="w_both_low", timestamp=datetime.now(),
         heart_rate=95.0,
@@ -208,7 +208,59 @@ def test_consult_fusion_both_low_fallback():
         nlos_flag=False,
     )
     result = consult_fusion_tool("resident_01", "hr")
-    assert result["verdict"]["dominant_modality"] == "best_effort"
+    assert result["verdict"]["dominant_modality"] == "none"
+    assert result["verdict"]["fused_value"] is None
+    assert result["checks"]["quality_event"] is True
+
+
+def test_consult_fusion_reads_real_per_modality_fields():
+    """portable_v2 DB fields should reach FusionEngine estimates."""
+    insert_sensing_window(
+        window_id="w_pm", timestamp=datetime.now(),
+        heart_rate=75.0, respiration_rate=18.0,
+        wifi_confidence=0.9, mmwave_confidence=0.8,
+        hr_wifi=70.0, hr_mm=80.0,
+        rr_wifi=17.0, rr_mm=20.0,
+        hr_conf=0.95, rr_conf=0.7,
+        hr_source="mmwave_main", rr_source="fused_consistent",
+        source="portable_v2",
+    )
+    result = consult_fusion_tool("resident_01", "hr")
+    assert result["checks"]["data_mode"] == "per_modality"
+    assert result["estimates"]["wifi"]["value"] == 70.0
+    assert result["estimates"]["mmwave"]["value"] == 80.0
+    assert result["checks"]["delta"] == 10.0
+
+
+def test_read_sensing_state_returns_portable_v2_fields():
+    insert_sensing_window(
+        window_id="w_pm_read", timestamp=datetime.now(),
+        heart_rate=75.0, respiration_rate=18.0,
+        hr_wifi=70.0, hr_mm=80.0,
+        rr_wifi=17.0, rr_mm=20.0,
+        hr_conf=0.9, rr_conf=0.6,
+        quality_event=1,
+        hr_source="mmwave_main", rr_source="fused_consistent",
+    )
+    result = read_sensing_state_tool("resident_01")
+    assert result["hr_wifi"] == 70.0
+    assert result["hr_mm"] == 80.0
+    assert result["rr_wifi"] == 17.0
+    assert result["rr_mm"] == 20.0
+    assert result["hr_conf"] == 0.9
+    assert result["rr_conf"] == 0.6
+    assert result["quality_event"] == 1
+
+
+def test_query_history_reference_timestamp_blocks_future_data():
+    ref = datetime(2026, 7, 9, 12, 0, 0)
+    insert_sensing_window("hist_before", ref - timedelta(minutes=5), heart_rate=70.0)
+    insert_sensing_window("hist_after", ref + timedelta(minutes=5), heart_rate=200.0)
+    result = query_history_tool(
+        "resident_01", "hr", "1h", reference_timestamp=ref.isoformat()
+    )
+    assert result["status"] == "ok"
+    assert 200.0 not in result["recent_values"]
 
 
 def test_consult_fusion_no_data():

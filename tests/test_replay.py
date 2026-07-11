@@ -63,6 +63,29 @@ class TestSensorHub:
         )
         assert len(events) >= 1
 
+    @pytest.mark.asyncio
+    async def test_compose_evaluate_false_only_persists(self):
+        init_db()
+        from agent_layer.nurse_agent import NurseAgent
+        from agent_layer.event_bus import EventBus
+        from storage.models import query_latest_sensing_window
+
+        bus = EventBus()
+        events = []
+        bus.subscribe("*")(lambda e: events.append(e))
+        hub = SensorHub(nurse=NurseAgent(event_bus=bus))
+
+        await hub.compose(
+            window_id="ingest_only",
+            timestamp=datetime.now(),
+            data={"heart_rate": 130.0},
+            evaluate=False,
+        )
+        latest = query_latest_sensing_window("resident_01")
+        assert latest["window_id"] == "ingest_only"
+        assert latest["hr"] == 130.0
+        assert events == []
+
 
 class TestSensorAligner:
     def test_align_hr_only(self):

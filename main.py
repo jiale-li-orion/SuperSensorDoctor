@@ -78,6 +78,7 @@ def create_app(config: dict = None) -> FastAPI:
     @bus.subscribe("rr_tachypnea")
     @bus.subscribe("low_confidence")
     @bus.subscribe("nlos_occlusion")
+    @bus.subscribe("modality_conflict")
     @bus.subscribe("fall_no_physiological_change")
     async def on_diagnosis_event(event):
         """Nurse Agent 发布事件 → 持久化 health_event → Diagnosis Agent 处理"""

@@ -52,6 +52,14 @@ class ToolRegistry:
         """返回 OpenAI function-calling 格式的 schema"""
         result = []
         for name, tool in self._tools.items():
+            properties = {
+                key: {k: v for k, v in meta.items() if k != "optional"}
+                for key, meta in tool.parameters.items()
+            }
+            required = [
+                key for key, meta in tool.parameters.items()
+                if not meta.get("optional", False)
+            ]
             result.append({
                 "type": "function",
                 "function": {
@@ -59,8 +67,8 @@ class ToolRegistry:
                     "description": tool.description,
                     "parameters": {
                         "type": "object",
-                        "properties": tool.parameters,
-                        "required": list(tool.parameters.keys()),
+                        "properties": properties,
+                        "required": required,
                     },
                 },
             })
@@ -97,15 +105,34 @@ _METRIC_COL_MAP = {"hr": "heart_rate", "rr": "respiration_rate", "temp": "body_t
             "type": "string",
             "description": "时间范围，如 '7d' 表示7天，'3w' 表示3周",
         },
+        "reference_timestamp": {
+            "type": "string",
+            "description": "可选。事件发生时间 ISO 字符串；历史查询不得读取该时间之后的数据。",
+            "optional": True,
+        },
     },
 )
-def query_history_tool(resident_id: str, metric: str, time_range: str) -> dict:
+def query_history_tool(
+    resident_id: str,
+    metric: str,
+    time_range: str,
+    reference_timestamp: Optional[str] = None,
+) -> dict:
     from storage import models
 
     minutes = {"7d": 10080, "3w": 30240, "24h": 1440, "1h": 60}
     col_metric = _METRIC_COL_MAP.get(metric, metric)
+    ref_dt = datetime.now()
+    if reference_timestamp:
+        try:
+            ref_dt = datetime.fromisoformat(reference_timestamp)
+            if ref_dt.tzinfo is not None:
+                ref_dt = ref_dt.replace(tzinfo=None)
+        except ValueError:
+            ref_dt = datetime.now()
     rows = models.query_recent_windows(
-        resident_id, col_metric, minutes.get(time_range, 1440)
+        resident_id, col_metric, minutes.get(time_range, 1440),
+        reference_timestamp=ref_dt,
     )
     if not rows:
         return {"status": "no_data", "message": f"No {metric} data found"}
@@ -132,7 +159,7 @@ def query_history_tool(resident_id: str, metric: str, time_range: str) -> dict:
             resident_id=resident_id,
             metric=col_metric,
             value=values[-1],  # most recent value
-            at_timestamp=datetime.now(),
+            at_timestamp=ref_dt,
         )
         if baseline is not None:
             result["z_score"] = baseline.get("z_score")
@@ -281,6 +308,15 @@ def read_sensing_state_tool(resident_id: str) -> dict:
         "posture": row.get("posture"),
         "sensor_contact": bool(row.get("sensor_contact")) if row.get("sensor_contact") is not None else None,
         "missing_modalities": json.loads(row.get("missing_mods", "[]")),
+        "hr_wifi": row.get("hr_wifi"),
+        "hr_mm": row.get("hr_mm"),
+        "rr_wifi": row.get("rr_wifi"),
+        "rr_mm": row.get("rr_mm"),
+        "hr_conf": row.get("hr_conf"),
+        "rr_conf": row.get("rr_conf"),
+        "quality_event": int(row.get("quality_event") or 0),
+        "hr_source": row.get("hr_source"),
+        "rr_source": row.get("rr_source"),
     }
 
 
@@ -314,15 +350,24 @@ def consult_fusion_tool(resident_id: str, metric: str) -> dict:
         heart_rate=row.get("hr"),
         respiration_rate=row.get("rr"),
         body_temp=row.get("body_temp"),
-        wifi_confidence=row.get("wifi_conf", 0.0) or 0.0,
-        mmwave_confidence=row.get("mmwave_conf", 0.0) or 0.0,
-        thermal_confidence=row.get("thermal_conf", 0.0) or 0.0,
+        wifi_confidence=row.get("wifi_conf"),
+        mmwave_confidence=row.get("mmwave_conf"),
+        thermal_confidence=row.get("thermal_conf"),
         nlos_flag=bool(row.get("nlos_flag", False)),
         fall_status=row.get("fall_status"),
         activity_state=row.get("activity_state", "unknown"),
         posture=row.get("posture"),
         sensor_contact=row.get("sensor_contact"),
         missing_modalities=json.loads(row.get("missing_mods", "[]")),  # list from JSON string
+        hr_wifi=row.get("hr_wifi"),
+        hr_mm=row.get("hr_mm"),
+        rr_wifi=row.get("rr_wifi"),
+        rr_mm=row.get("rr_mm"),
+        hr_conf=row.get("hr_conf"),
+        rr_conf=row.get("rr_conf"),
+        quality_event=int(row.get("quality_event") or 0),
+        hr_source=row.get("hr_source"),
+        rr_source=row.get("rr_source"),
     )
 
     # Delegate to FusionEngine
@@ -331,7 +376,8 @@ def consult_fusion_tool(resident_id: str, metric: str) -> dict:
 
     # Detect if we had real per-modality data
     mods = parse_modalities(row.get("modalities_json"))
-    data_mode = "per_modality" if mods else "fused_value_proxy"
+    has_pm = any(row.get(k) is not None for k in ("hr_wifi", "hr_mm", "rr_wifi", "rr_mm"))
+    data_mode = "per_modality" if (mods or has_pm) else "fused_value_proxy"
 
     return {
         "status": "ok",
@@ -342,7 +388,7 @@ def consult_fusion_tool(resident_id: str, metric: str) -> dict:
             "confidence_gap": round(
                 abs((row.get("wifi_conf", 0.0) or 0.0) - (row.get("mmwave_conf", 0.0) or 0.0)), 2
             ),
-            "quality_event": False,
+            "quality_event": result.checks.get("quality_event", False),
             "data_mode": data_mode,
         },
         "verdict": result.verdict,

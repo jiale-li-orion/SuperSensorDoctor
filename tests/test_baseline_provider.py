@@ -77,6 +77,29 @@ class TestBaselineProvider:
         result = bp.compute(RESIDENT, "hr", at_timestamp=old_ts)
         assert result is None  # seeded data is all recent, not in old window
 
+    def test_compute_excludes_current_window(self):
+        """Baseline must not include the event/current window itself."""
+        with get_db() as conn:
+            conn.execute("DELETE FROM sensing_windows")
+        ref = datetime(2026, 7, 9, 12, 0, 0)
+        for i in range(5):
+            insert_sensing_window(
+                window_id=f"prior_{i}",
+                timestamp=ref - timedelta(minutes=10 + i),
+                resident_id=RESIDENT,
+                heart_rate=70.0,
+            )
+        insert_sensing_window(
+            window_id="current_spike",
+            timestamp=ref,
+            resident_id=RESIDENT,
+            heart_rate=170.0,
+        )
+        result = BaselineProvider(days=1, min_points=5).compute(RESIDENT, "hr", ref)
+        assert result is not None
+        assert result["mean"] == 70.0
+        assert result["count"] == 5
+
     def test_compute_invalid_metric_returns_none(self):
         bp = BaselineProvider()
         result = bp.compute(RESIDENT, "invalid_metric", at_timestamp=datetime.now())

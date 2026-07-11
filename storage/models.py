@@ -18,7 +18,7 @@ def insert_sensing_window(
     window_id: str, timestamp: datetime,
     resident_id: str = "resident_01",
     heart_rate=None, respiration_rate=None, body_temp=None,
-    wifi_confidence=1.0, mmwave_confidence=1.0, thermal_confidence=1.0,
+    wifi_confidence=None, mmwave_confidence=None, thermal_confidence=None,
     nlos_flag=False, missing_modalities=None, modalities_json=None, activity_state="unknown",
     posture=None, fall_status=None, sensor_contact=None, source="replay",
     # portable_v2 parameters
@@ -28,27 +28,57 @@ def insert_sensing_window(
     rr_source=None, hr_source=None,
     rr_truth=None, hr_truth=None,
 ) -> dict:
+    nlos_int = int(bool(nlos_flag))
+    quality_int = int(quality_event or 0)
     with get_db() as conn:
         conn.execute("""
-            INSERT OR REPLACE INTO sensing_windows
+            INSERT INTO sensing_windows
             (window_id, timestamp, resident_id, rr, hr, body_temp,
              wifi_conf, mmwave_conf, thermal_conf, nlos_flag, missing_mods,
              modalities_json, activity_state, posture, fall_status, sensor_contact, source,
              rr_wifi, rr_mm, hr_wifi, hr_mm, rr_conf, hr_conf,
              quality_event, rr_source, hr_source, rr_truth, hr_truth)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(window_id) DO UPDATE SET
+                timestamp=excluded.timestamp,
+                resident_id=excluded.resident_id,
+                rr=excluded.rr,
+                hr=excluded.hr,
+                body_temp=excluded.body_temp,
+                wifi_conf=excluded.wifi_conf,
+                mmwave_conf=excluded.mmwave_conf,
+                thermal_conf=excluded.thermal_conf,
+                nlos_flag=excluded.nlos_flag,
+                missing_mods=excluded.missing_mods,
+                modalities_json=excluded.modalities_json,
+                activity_state=excluded.activity_state,
+                posture=excluded.posture,
+                fall_status=excluded.fall_status,
+                sensor_contact=excluded.sensor_contact,
+                source=excluded.source,
+                rr_wifi=excluded.rr_wifi,
+                rr_mm=excluded.rr_mm,
+                hr_wifi=excluded.hr_wifi,
+                hr_mm=excluded.hr_mm,
+                rr_conf=excluded.rr_conf,
+                hr_conf=excluded.hr_conf,
+                quality_event=excluded.quality_event,
+                rr_source=excluded.rr_source,
+                hr_source=excluded.hr_source,
+                rr_truth=excluded.rr_truth,
+                hr_truth=excluded.hr_truth
         """, (
             window_id, timestamp.isoformat(),
             resident_id,
             respiration_rate, heart_rate, body_temp,
             wifi_confidence, mmwave_confidence, thermal_confidence,
-            int(nlos_flag), json.dumps(missing_modalities or []),
+            nlos_int, json.dumps(missing_modalities or []),
             modalities_json,
             activity_state, posture, fall_status, sensor_contact, source,
             rr_wifi, rr_mm, hr_wifi, hr_mm,
             float(rr_conf) if rr_conf is not None else None,
             float(hr_conf) if hr_conf is not None else None,
-            int(quality_event), rr_source, hr_source, rr_truth, hr_truth,
+            quality_int, rr_source, hr_source, rr_truth, hr_truth,
         ))
         row = conn.execute(
             "SELECT * FROM sensing_windows WHERE window_id=?", (window_id,)
@@ -58,18 +88,27 @@ def insert_sensing_window(
 
 VALID_METRIC_COLS = {"heart_rate": "hr", "respiration_rate": "rr", "body_temp": "body_temp"}
 
-def query_recent_windows(resident_id: str, metric: str, minutes: int = 60) -> list[dict]:
+def query_recent_windows(
+    resident_id: str,
+    metric: str,
+    minutes: int = 60,
+    reference_timestamp: Optional[datetime] = None,
+) -> list[dict]:
     col = VALID_METRIC_COLS[metric]  # KeyError 兜底, 防 SQL 注入
-    threshold = (datetime.now() - timedelta(minutes=minutes)).isoformat()
+    ref = reference_timestamp or datetime.now()
+    if ref.tzinfo is not None:
+        ref = ref.replace(tzinfo=None)
+    threshold = (ref - timedelta(minutes=minutes)).isoformat()
+    upper = ref.isoformat()
     with get_db() as conn:
         rows = conn.execute(f"""
             SELECT timestamp, {col} as value, wifi_conf, mmwave_conf, modalities_json,
                    rr_wifi, rr_mm, hr_wifi, hr_mm, rr_conf, hr_conf,
                    quality_event, rr_source, hr_source
             FROM sensing_windows
-            WHERE resident_id=? AND timestamp >= ?
+            WHERE resident_id=? AND timestamp >= ? AND timestamp < ?
             ORDER BY timestamp
-        """, (resident_id, threshold)).fetchall()
+        """, (resident_id, threshold, upper)).fetchall()
         return [_row_to_dict(r) for r in rows]
 
 

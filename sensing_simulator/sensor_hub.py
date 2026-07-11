@@ -15,7 +15,7 @@ class SensorHub:
     def __init__(self, nurse: Optional[NurseAgent] = None):
         self.nurse = nurse
 
-    async def compose(self, window_id: str, timestamp: datetime, data: dict):
+    async def compose(self, window_id: str, timestamp: datetime, data: dict, evaluate: bool = True):
         """组合并处理一个时间窗口的数据"""
         state = self._to_state_object(window_id, timestamp, data)
 
@@ -28,8 +28,8 @@ class SensorHub:
             heart_rate=data.get("heart_rate"),
             respiration_rate=data.get("respiration_rate"),
             body_temp=data.get("body_temp"),
-            wifi_confidence=data.get("wifi_confidence", 1.0),
-            mmwave_confidence=data.get("mmwave_confidence", 1.0),
+            wifi_confidence=data.get("wifi_confidence"),
+            mmwave_confidence=data.get("mmwave_confidence"),
             thermal_confidence=data.get("thermal_confidence"),
             nlos_flag=data.get("nlos_flag", False),
             activity_state=data.get("activity_state", "unknown"),
@@ -54,7 +54,7 @@ class SensorHub:
         )
 
         # 通知 NurseAgent
-        if self.nurse:
+        if evaluate and self.nurse:
             await self.nurse.evaluate(state)
 
         return result

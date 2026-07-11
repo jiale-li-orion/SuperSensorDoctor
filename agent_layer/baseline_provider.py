@@ -49,7 +49,7 @@ class BaselineProvider:
         with get_db() as conn:
             rows = conn.execute(f"""
                 SELECT {col} AS value FROM sensing_windows
-                WHERE resident_id=? AND timestamp >= ? AND timestamp <= ?
+                WHERE resident_id=? AND timestamp >= ? AND timestamp < ?
                   AND {col} IS NOT NULL
                 ORDER BY timestamp
             """, (resident_id, threshold, ts_end)).fetchall()

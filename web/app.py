@@ -62,6 +62,8 @@ async def dashboard(request: Request):
         "replay_count": getattr(getattr(request.app.state, "replay_engine", None), "_windows_created", 0),
         "pv_loading": getattr(request.app.state, "pv_loading", False),
         "pv_count": getattr(request.app.state, "pv_count", 0),
+        "pv_status": getattr(request.app.state, "pv_status", "idle"),
+        "pv_error": getattr(request.app.state, "pv_error", None),
     })
 
 
@@ -179,16 +181,29 @@ async def load_portable_v2_endpoint(request: Request):
     hub = getattr(request.app.state, "sensor_hub", None)
     if hub is None:
         return {"status": "error", "message": "No sensor_hub configured"}
+    if getattr(request.app.state, "pv_loading", False):
+        return {
+            "status": "already_running",
+            "windows_loaded": getattr(request.app.state, "pv_count", 0),
+            "windows_target": 2349,
+        }
 
     async def _load_loop():
         request.app.state.pv_loading = True
+        request.app.state.pv_status = "loading"
+        request.app.state.pv_error = None
         request.app.state.pv_count = 0
         try:
             cnt = await load_portable_v2_csv(
                 hub,
                 progress_callback=lambda c: setattr(request.app.state, "pv_count", c),
+                evaluate=False,
             )
             request.app.state.pv_count = cnt
+            request.app.state.pv_status = "completed"
+        except Exception as exc:
+            request.app.state.pv_status = "failed"
+            request.app.state.pv_error = f"{type(exc).__name__}: {exc}"
         finally:
             request.app.state.pv_loading = False
 
@@ -200,6 +215,8 @@ async def load_portable_v2_endpoint(request: Request):
 async def portable_v2_status(request: Request):
     return {
         "loading": getattr(request.app.state, "pv_loading", False),
+        "status": getattr(request.app.state, "pv_status", "idle"),
+        "error": getattr(request.app.state, "pv_error", None),
         "windows_loaded": getattr(request.app.state, "pv_count", 0),
         "windows_target": 2349,
     }

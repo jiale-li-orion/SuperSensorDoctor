@@ -10,8 +10,35 @@ import json
 from typing import Optional
 from agent_layer.state_objects import StateObject
 
+DEFAULT_HARDWARE_CONFIDENCE = 0.5
 
-def synthesize_modalities(state: StateObject) -> str:
+
+def _conf_or_default(value: Optional[float], default: float = DEFAULT_HARDWARE_CONFIDENCE) -> float:
+    """Return a confidence value without treating 0.0 as missing."""
+    return default if value is None else float(value)
+
+
+def _metric_signal_confidence(state: StateObject, metric: Optional[str]) -> float:
+    """Return the metric-specific signal confidence, preserving 0.0."""
+    if metric == "hr":
+        return 1.0 if state.hr_conf is None else float(state.hr_conf)
+    if metric == "rr":
+        return 1.0 if state.rr_conf is None else float(state.rr_conf)
+    if state.hr_conf is not None:
+        return float(state.hr_conf)
+    if state.rr_conf is not None:
+        return float(state.rr_conf)
+    return 1.0
+
+
+def has_real_per_modality(state: StateObject) -> bool:
+    """True when any independent WiFi/mmWave estimate is present."""
+    return any(v is not None for v in (
+        state.hr_wifi, state.hr_mm, state.rr_wifi, state.rr_mm,
+    ))
+
+
+def synthesize_modalities(state: StateObject, metric: Optional[str] = None) -> str:
     """Generate per-modality estimates JSON string from a StateObject.
  
     Returns a JSON string like:
@@ -36,14 +63,14 @@ def synthesize_modalities(state: StateObject) -> str:
     hr = state.heart_rate
     rr = state.respiration_rate
     temp = state.body_temp
-    wifi_conf = state.wifi_confidence or 0.5
-    mmwave_conf = state.mmwave_confidence or 0.5
-    thermal_conf = state.thermal_confidence or 0.5
+    wifi_conf = _conf_or_default(state.wifi_confidence)
+    mmwave_conf = _conf_or_default(state.mmwave_confidence)
+    thermal_conf = _conf_or_default(state.thermal_confidence)
 
     # When real per-modality data exists (from portable_v2 pipeline), use it.
     # Each modality gets its own independent estimate with per-metric confidence.
     # This enables meaningful cross-modality consistency checks in FusionEngine.
-    has_per_modality = state.hr_wifi is not None or state.rr_wifi is not None
+    has_per_modality = has_real_per_modality(state)
 
     if has_per_modality:
         # Use real per-modality values + combine hardware and signal confidence
@@ -52,10 +79,11 @@ def synthesize_modalities(state: StateObject) -> str:
         mm_hr_est = state.hr_mm if state.hr_mm is not None else hr
         mm_rr_est = state.rr_mm if state.rr_mm is not None else rr
 
-        # Combine hardware reliability (wifi_conf) with per-metric signal confidence
-        wifi_conf_used = min(wifi_conf, (state.hr_conf or state.rr_conf or 1.0), 0.95)
+        # Combine hardware reliability with metric-specific signal confidence.
+        signal_conf = _metric_signal_confidence(state, metric)
+        wifi_conf_used = min(wifi_conf, signal_conf, 0.95)
         mm_conf_used = min(mmwave_conf * (0.5 if state.nlos_flag else 1.0),
-                           (state.hr_conf or state.rr_conf or 1.0), 0.95)
+                           signal_conf, 0.95)
 
         modalities = {
             "wifi": {

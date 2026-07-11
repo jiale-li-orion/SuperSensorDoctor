@@ -86,16 +86,17 @@ class TestFusionEngineSingleMetric:
         result = self.engine.fuse(low_wifi, "hr")
         assert result.verdict["dominant_modality"] == "mmwave"
 
-    def test_both_low_confidence_best_effort(self):
-        """Both modalities low confidence → best_effort fallback."""
+    def test_both_low_confidence_quality_event(self):
+        """Both modalities low confidence → no usable fused value + quality event."""
         low_both = StateObject(
             window_id="low_both", timestamp=datetime.now(),
             heart_rate=72.0, respiration_rate=16.0,
             wifi_confidence=0.2, mmwave_confidence=0.2,
         )
         result = self.engine.fuse(low_both, "hr")
-        assert result.verdict["dominant_modality"] == "best_effort"
-        assert result.verdict["fused_value"] is not None  # picks best available
+        assert result.verdict["dominant_modality"] == "none"
+        assert result.verdict["fused_value"] is None
+        assert result.checks["quality_event"] is True
 
     def test_no_vitals_returns_none_fused(self):
         """Heart_rate None → no usable data."""
@@ -155,6 +156,45 @@ class TestFusionEngineEdgeCases:
         assert FusionEngine.CONSISTENCY_DELTA["hr"] == 5.0
         assert FusionEngine.CONSISTENCY_DELTA["rr"] == 3.0
         assert FusionEngine.CONSISTENCY_DELTA["temp"] == 0.5
+
+    def test_rr_uses_rr_conf_not_hr_conf(self):
+        state = StateObject(
+            window_id="metric_conf", timestamp=datetime.now(),
+            heart_rate=72.0, respiration_rate=18.0,
+            hr_wifi=70.0, hr_mm=72.0,
+            rr_wifi=18.0, rr_mm=18.5,
+            wifi_confidence=0.9, mmwave_confidence=0.9,
+            hr_conf=0.9, rr_conf=0.3,
+        )
+        result = FusionEngine().fuse(state, "rr")
+        assert result.estimates["wifi"]["confidence"] == 0.3
+        assert result.estimates["mmwave"]["confidence"] == 0.3
+        assert result.checks["wifi_reliable"] is False
+
+    def test_zero_signal_confidence_is_preserved(self):
+        state = StateObject(
+            window_id="zero_conf", timestamp=datetime.now(),
+            heart_rate=72.0,
+            hr_wifi=70.0, hr_mm=72.0,
+            wifi_confidence=0.9, mmwave_confidence=0.9,
+            hr_conf=0.0,
+        )
+        result = FusionEngine().fuse(state, "hr")
+        assert result.estimates["wifi"]["confidence"] == 0.0
+        assert result.estimates["mmwave"]["confidence"] == 0.0
+        assert result.verdict["fused_value"] is None
+        assert result.checks["quality_event"] is True
+
+    def test_mmwave_only_counts_as_per_modality(self):
+        state = StateObject(
+            window_id="mm_only", timestamp=datetime.now(),
+            heart_rate=72.0,
+            hr_mm=72.0,
+            mmwave_confidence=0.9,
+            hr_conf=0.9,
+        )
+        result = FusionEngine().fuse(state, "hr")
+        assert result.checks["has_per_modality"] is True
 
 
 class TestFusionEngineIntegration:

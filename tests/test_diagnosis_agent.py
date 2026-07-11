@@ -348,3 +348,26 @@ class TestDiagnosisAgentContext:
         ev = agent._build_evidence(event, [])
         assert "rule_markers" in ev, "Missing rule_markers in evidence"
         assert ev["rule_markers"]["duration_sec"] == 300
+
+    def test_evidence_includes_portable_fields_without_truth(self):
+        from agent_layer.diagnosis_agent import DiagnosisAgent
+        from agent_layer.state_objects import HealthEvent, StateObject
+        from agent_layer.tools import ToolRegistry
+        from datetime import datetime
+
+        agent = DiagnosisAgent("r1", None, ToolRegistry())
+        state = StateObject(
+            "ctx4", datetime.now(), heart_rate=75.0,
+            hr_wifi=70.0, hr_mm=80.0, hr_conf=0.9,
+            rr_wifi=17.0, rr_mm=19.0, rr_conf=0.7,
+            hr_truth=73.0, rr_truth=18.0,
+        )
+        event = HealthEvent("e4", "modality_conflict", datetime.now(), state, "conflict")
+
+        ev = agent._build_evidence(event, [])
+        summary = ev["sensing_summary"]
+        assert summary["hr_wifi"] == 70.0
+        assert summary["hr_mm"] == 80.0
+        assert summary["rr_conf"] == 0.7
+        assert "hr_truth" not in summary
+        assert "rr_truth" not in summary

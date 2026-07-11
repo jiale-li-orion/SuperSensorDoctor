@@ -14,6 +14,7 @@ from typing import Optional
 from agent_layer.state_objects import StateObject, FusionResult
 from agent_layer.modality_synthesizer import (
     parse_modalities, get_modality_estimate, synthesize_modalities,
+    has_real_per_modality,
 )
 from agent_layer.confidence import (
     estimate_wifi_confidence, estimate_mmwave_confidence, estimate_thermal_confidence,
@@ -44,7 +45,7 @@ class FusionEngine:
             FusionResult with estimates, checks, and verdict
         """
         # Parse or synthesize per-modality estimates
-        raw_mods = parse_modalities(synthesize_modalities(state))
+        raw_mods = parse_modalities(synthesize_modalities(state, metric=metric))
         
         # Extract per-modality estimates
         if metric == "temp":
@@ -56,15 +57,11 @@ class FusionEngine:
             mmwave_val = get_modality_estimate(raw_mods, "mmwave", metric)
             thermal_val = None  # thermal doesn't estimate hr/rr
         
-        # Confidence from state or estimates
-        if metric == "temp":
-            wifi_conf = estimate_wifi_confidence(state) if state.wifi_confidence is None else state.wifi_confidence
-            mmwave_conf = estimate_mmwave_confidence(state) if state.mmwave_confidence is None else state.mmwave_confidence
-            thermal_conf = estimate_thermal_confidence(state) if state.thermal_confidence is None else state.thermal_confidence
-        else:
-            wifi_conf = estimate_wifi_confidence(state) if state.wifi_confidence is None else state.wifi_confidence
-            mmwave_conf = estimate_mmwave_confidence(state) if state.mmwave_confidence is None else state.mmwave_confidence
-            thermal_conf = 0.0  # not applicable
+        # Confidence is produced by the observation adapter (synthesizer).
+        # Do not recompute here or portable_v2 metric confidence gets lost.
+        wifi_conf = float(raw_mods.get("wifi", {}).get("confidence") or 0.0)
+        mmwave_conf = float(raw_mods.get("mmwave", {}).get("confidence") or 0.0)
+        thermal_conf = float(raw_mods.get("thermal", {}).get("confidence") or 0.0)
 
         # Step 1: Confidence evaluation
         wifi_reliable = wifi_conf >= self.high_confidence_threshold
@@ -93,7 +90,11 @@ class FusionEngine:
         dominant = "none"
         rationale = "No reliable modality available"
 
-        if state.nlos_flag:
+        if metric == "temp" and thermal_reliable and thermal_val is not None:
+            fused_value = thermal_val
+            dominant = "thermal"
+            rationale = "Thermal modality reliable for temperature"
+        elif state.nlos_flag:
             # NLOS → WiFi dominates (mmWave known-bad)
             fused_value = wifi_val if wifi_val is not None else mmwave_val
             if fused_value is not None:
@@ -119,13 +120,19 @@ class FusionEngine:
                 dominant = "mmwave"
                 rationale = "mmWave reliable, WiFi insufficient"
         else:
-            # Both unreliable or conflict → best-effort fallback
-            available = [(v, c) for v, c in [(wifi_val, wifi_conf), (mmwave_val, mmwave_conf), (thermal_val, thermal_conf)] if v is not None]
-            if available:
-                best = max(available, key=lambda x: x[1])
-                fused_value = best[0]
-                dominant = "best_effort"
-                rationale = f"All modalities low-confidence, picked best available"
+            # Both unreliable or conflicting reliable branches should not masquerade
+            # as a clean physiological value.
+            fused_value = None
+            dominant = "none"
+            rationale = "No reliable consensus; mark as sensing quality event"
+
+        quality_event = (
+            bool(state.quality_event)
+            or (
+                bool([v for v in [wifi_val, mmwave_val, thermal_val] if v is not None])
+                and fused_value is None
+            )
+        )
 
         return FusionResult(
             metric=metric,
@@ -139,7 +146,8 @@ class FusionEngine:
                 "nlos_flag": bool(state.nlos_flag),
                 "rr_source": state.rr_source,
                 "hr_source": state.hr_source,
-                "has_per_modality": state.hr_wifi is not None or state.rr_wifi is not None,
+                "has_per_modality": has_real_per_modality(state),
+                "quality_event": quality_event,
             },
             verdict={
                 "fused_value": fused_value,
@@ -147,6 +155,7 @@ class FusionEngine:
                 "rationale": rationale,
                 "rr_source": state.rr_source,
                 "hr_source": state.hr_source,
+                "quality_event": quality_event,
             },
         )
 
