@@ -29,12 +29,9 @@ from agent_layer.fusion_engine import FusionEngine
 from agent_layer.state_objects import StateObject
 from agent_layer.report_agent import ReportAgent
 from agent_layer.clinical_policy import news2_reference
-from storage.db import init_db
-
-# Initialize database on module load
-init_db()
 
 app = FastAPI(title="SuperSenseDoctor", version="0.1.0")
+
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 STATIC_DIR = Path(__file__).parent / "static"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))

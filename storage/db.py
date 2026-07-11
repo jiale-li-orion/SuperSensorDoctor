@@ -2,6 +2,7 @@
 
 import sqlite3
 from pathlib import Path
+from threading import Lock
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 DATA_DIR.mkdir(exist_ok=True)
@@ -54,8 +55,35 @@ CREATE TABLE IF NOT EXISTS episode_logs (
 CREATE INDEX IF NOT EXISTS idx_episodes_time ON episode_logs(resident_id, start_time);
 """
 
+_init_lock = Lock()
+_init_done = False
+
 
 def get_db() -> sqlite3.Connection:
+    global _init_done
+    if not _init_done:
+        with _init_lock:
+            if not _init_done:
+                # Use a temporary non-WAL connection for init to avoid lock conflicts
+                conn = sqlite3.connect(DB_PATH)
+                conn.execute("PRAGMA foreign_keys=ON")
+                conn.executescript(SCHEMA_SQL)
+                # Column migrations
+                for col in [
+                    "modalities_json TEXT",
+                    "rr_wifi REAL", "rr_mm REAL", "hr_wifi REAL", "hr_mm REAL",
+                    "rr_conf REAL", "hr_conf REAL",
+                    "quality_event INTEGER DEFAULT 0",
+                    "rr_source TEXT", "hr_source TEXT",
+                    "rr_truth REAL", "hr_truth REAL",
+                ]:
+                    try:
+                        conn.execute(f"ALTER TABLE sensing_windows ADD COLUMN {col}")
+                    except sqlite3.OperationalError:
+                        pass
+                conn.close()
+                _init_done = True
+
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
@@ -64,22 +92,7 @@ def get_db() -> sqlite3.Connection:
 
 
 def init_db():
-    with get_db() as conn:
-        conn.executescript(SCHEMA_SQL)
-        # Phase C: add modalities_json column if not present
-        try:
-            conn.execute("ALTER TABLE sensing_windows ADD COLUMN modalities_json TEXT")
-        except conn.OperationalError:
-            pass  # column already exists
-        # Phase 1: portable_v2 per-modality estimates and confidence
-        for col in [
-            "rr_wifi REAL", "rr_mm REAL", "hr_wifi REAL", "hr_mm REAL",
-            "rr_conf REAL", "hr_conf REAL",
-            "quality_event INTEGER DEFAULT 0",
-            "rr_source TEXT", "hr_source TEXT",
-            "rr_truth REAL", "hr_truth REAL",
-        ]:
-            try:
-                conn.execute(f"ALTER TABLE sensing_windows ADD COLUMN {col}")
-            except conn.OperationalError:
-                pass  # column already exists
+    """Force re-initialization (used for testing)."""
+    global _init_done
+    _init_done = False
+    get_db().close()
