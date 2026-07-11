@@ -212,3 +212,111 @@ def query_portable_v2_windows(resident_id: str = "resident_01", limit: int = 100
             LIMIT ?
         """, (resident_id, limit)).fetchall()
         return [_row_to_dict(r) for r in rows]
+
+
+# ── Trends ──
+
+def query_trend_range(
+    resident_id: str,
+    reference: Optional[datetime] = None,
+    minutes: int = 60,
+    max_points: int = 1200,
+) -> list[dict]:
+    """Return sensing windows for trend charting, with forced sampling.
+
+    Uses the data timeline (not wall-clock) so historical replay works.
+    When row count exceeds max_points, uniformly sample but always
+    include rows flagged with quality_event, modality_conflict, or nlos_flag.
+    """
+    ref = reference or datetime.now()
+    if ref.tzinfo is not None:
+        ref = ref.replace(tzinfo=None)
+    threshold = (ref - timedelta(minutes=minutes)).isoformat()
+    upper = ref.isoformat()
+
+    with get_db() as conn:
+        rows = conn.execute("""
+            SELECT * FROM sensing_windows
+            WHERE resident_id=? AND timestamp >= ? AND timestamp < ?
+            ORDER BY timestamp
+        """, (resident_id, threshold, upper)).fetchall()
+
+    result = [_row_to_dict(r) for r in rows]
+
+    if len(result) <= max_points:
+        return result
+
+    # Forced sampling: keep flagged rows, then uniformly sample the rest
+    flagged = [r for r in result if r.get("quality_event") or r.get("nlos_flag")]
+    flagged_ids = {r["window_id"] for r in flagged}
+    normal = [r for r in result if r["window_id"] not in flagged_ids]
+
+    # Always keep first and last
+    keep_ids = {result[0]["window_id"], result[-1]["window_id"]}
+    keep_ids.update(flagged_ids)
+
+    budget = max_points - len(keep_ids)
+    if budget > 0 and normal:
+        step = max(1, len(normal) // budget)
+        keep_ids.update(normal[i]["window_id"] for i in range(0, len(normal), step))
+
+    return [r for r in result if r["window_id"] in keep_ids]
+
+
+# ── Episodes (filtered, paginated) ──
+
+def query_filtered_episodes(
+    resident_id: str,
+    level: Optional[str] = None,
+    event_type: Optional[str] = None,
+    from_dt: Optional[datetime] = None,
+    to_dt: Optional[datetime] = None,
+    search: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[dict], int]:
+    """Return paginated episodes with health_event enrichment.
+
+    Returns (rows, total_count).
+    """
+    conditions = ["e.resident_id = ?"]
+    params: list = [resident_id]
+
+    if level:
+        conditions.append("json_extract(e.decision, '$.level') = ?")
+        params.append(level)
+    if event_type:
+        conditions.append("e.event_id LIKE ?")
+        params.append(f"{event_type}%")
+    if from_dt:
+        conditions.append("e.start_time >= ?")
+        params.append(from_dt.isoformat())
+    if to_dt:
+        conditions.append("e.start_time < ?")
+        params.append(to_dt.isoformat())
+    if search:
+        conditions.append(
+            "(e.event_id LIKE ? OR json_extract(e.decision, '$.label') LIKE ? OR json_extract(e.evidence, '$.event.trigger_reason') LIKE ?)"
+        )
+        p = f"%{search}%"
+        params.extend([p, p, p])
+
+    where = " AND ".join(conditions)
+
+    with get_db() as conn:
+        count_row = conn.execute(
+            f"SELECT COUNT(*) as cnt FROM episode_logs e WHERE {where}", params
+        ).fetchone()
+        total = count_row["cnt"] if count_row else 0
+
+        rows = conn.execute(f"""
+            SELECT e.*, h.event_type as health_event_type,
+                   h.trigger_reason as health_trigger, h.handled
+            FROM episode_logs e
+            LEFT JOIN health_events h ON e.event_id = h.event_id
+            WHERE {where}
+            ORDER BY e.start_time DESC
+            LIMIT ? OFFSET ?
+        """, params + [limit, offset]).fetchall()
+
+    return [_row_to_dict(r) for r in rows], total
