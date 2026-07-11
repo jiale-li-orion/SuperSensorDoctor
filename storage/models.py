@@ -21,15 +21,22 @@ def insert_sensing_window(
     wifi_confidence=1.0, mmwave_confidence=1.0, thermal_confidence=1.0,
     nlos_flag=False, missing_modalities=None, modalities_json=None, activity_state="unknown",
     posture=None, fall_status=None, sensor_contact=None, source="replay",
+    # portable_v2 parameters
+    rr_wifi=None, rr_mm=None, hr_wifi=None, hr_mm=None,
+    rr_conf=None, hr_conf=None,
+    quality_event=False,
+    rr_source=None, hr_source=None,
+    rr_truth=None, hr_truth=None,
 ) -> dict:
     with get_db() as conn:
         conn.execute("""
             INSERT OR REPLACE INTO sensing_windows
             (window_id, timestamp, resident_id, rr, hr, body_temp,
              wifi_conf, mmwave_conf, thermal_conf, nlos_flag, missing_mods,
-             modalities_json,
-             activity_state, posture, fall_status, sensor_contact, source)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+             modalities_json, activity_state, posture, fall_status, sensor_contact, source,
+             rr_wifi, rr_mm, hr_wifi, hr_mm, rr_conf, hr_conf,
+             quality_event, rr_source, hr_source, rr_truth, hr_truth)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             window_id, timestamp.isoformat(),
             resident_id,
@@ -38,6 +45,10 @@ def insert_sensing_window(
             int(nlos_flag), json.dumps(missing_modalities or []),
             modalities_json,
             activity_state, posture, fall_status, sensor_contact, source,
+            rr_wifi, rr_mm, hr_wifi, hr_mm,
+            float(rr_conf) if rr_conf is not None else None,
+            float(hr_conf) if hr_conf is not None else None,
+            int(quality_event), rr_source, hr_source, rr_truth, hr_truth,
         ))
         row = conn.execute(
             "SELECT * FROM sensing_windows WHERE window_id=?", (window_id,)
@@ -52,7 +63,9 @@ def query_recent_windows(resident_id: str, metric: str, minutes: int = 60) -> li
     threshold = (datetime.now() - timedelta(minutes=minutes)).isoformat()
     with get_db() as conn:
         rows = conn.execute(f"""
-            SELECT timestamp, {col} as value, wifi_conf, mmwave_conf, modalities_json
+            SELECT timestamp, {col} as value, wifi_conf, mmwave_conf, modalities_json,
+                   rr_wifi, rr_mm, hr_wifi, hr_mm, rr_conf, hr_conf,
+                   quality_event, rr_source, hr_source
             FROM sensing_windows
             WHERE resident_id=? AND timestamp >= ?
             ORDER BY timestamp
@@ -148,3 +161,15 @@ def query_latest_sensing_window(resident_id: str) -> dict:
             LIMIT 1
         """, (resident_id,)).fetchone()
         return _row_to_dict(row)
+
+
+def query_portable_v2_windows(resident_id: str = "resident_01", limit: int = 100) -> list[dict]:
+    """返回包含 portable_v2 扩展字段的传感窗口。"""
+    with get_db() as conn:
+        rows = conn.execute("""
+            SELECT * FROM sensing_windows
+            WHERE resident_id=? AND rr_wifi IS NOT NULL
+            ORDER BY timestamp DESC
+            LIMIT ?
+        """, (resident_id, limit)).fetchall()
+        return [_row_to_dict(r) for r in rows]

@@ -1,8 +1,9 @@
 """Per-modality vital signs synthesizer.
  
-When real per-modality sensor data is available (from teammate pipeline),
-use it directly. When only fused values are available, synthesize per-modality
-estimates by applying modality-specific confidence models.
+When real per-modality sensor data is available (from portable_v2 pipeline
+via StateObject.hr_wifi/rr_wifi etc.), use it directly per-modality.
+When only fused values are available, synthesize per-modality estimates
+by applying modality-specific confidence models.
 """
 
 import json
@@ -31,37 +32,71 @@ def synthesize_modalities(state: StateObject) -> str:
             if "wifi" in state.missing_modalities or "mmwave" in state.missing_modalities:
                 return json.dumps(state.missing_modalities)
  
-    # Synthesize from fused values + confidence scores
+    # ── Per-modality estimates ──
     hr = state.heart_rate
     rr = state.respiration_rate
     temp = state.body_temp
     wifi_conf = state.wifi_confidence or 0.5
     mmwave_conf = state.mmwave_confidence or 0.5
     thermal_conf = state.thermal_confidence or 0.5
- 
-    # Per-modality: each modality gets the same fused value (since we lack
-    # raw sensor data to compute independent estimates), but each has its own
-    # modality-specific confidence.
-    # mmWave confidence is halved when NLOS is active.
-    modalities = {
-        "wifi": {
-            "hr": hr,
-            "rr": rr,
-            "confidence": min(wifi_conf, 0.95),
-            "nlos_affected": False,
-        },
-        "mmwave": {
-            "hr": hr,
-            "rr": rr,
-            "confidence": min(mmwave_conf * (0.5 if state.nlos_flag else 1.0), 0.95),
-            "nlos_affected": bool(state.nlos_flag),
-        },
-        "thermal": {
-            "temp": temp,
-            "confidence": min(thermal_conf, 0.95),
-            "nlos_affected": False,
-        },
-    }
+
+    # When real per-modality data exists (from portable_v2 pipeline), use it.
+    # Each modality gets its own independent estimate with per-metric confidence.
+    # This enables meaningful cross-modality consistency checks in FusionEngine.
+    has_per_modality = state.hr_wifi is not None or state.rr_wifi is not None
+
+    if has_per_modality:
+        # Use real per-modality values + combine hardware and signal confidence
+        wifi_hr_est = state.hr_wifi if state.hr_wifi is not None else hr
+        wifi_rr_est = state.rr_wifi if state.rr_wifi is not None else rr
+        mm_hr_est = state.hr_mm if state.hr_mm is not None else hr
+        mm_rr_est = state.rr_mm if state.rr_mm is not None else rr
+
+        # Combine hardware reliability (wifi_conf) with per-metric signal confidence
+        wifi_conf_used = min(wifi_conf, (state.hr_conf or state.rr_conf or 1.0), 0.95)
+        mm_conf_used = min(mmwave_conf * (0.5 if state.nlos_flag else 1.0),
+                           (state.hr_conf or state.rr_conf or 1.0), 0.95)
+
+        modalities = {
+            "wifi": {
+                "hr": wifi_hr_est,
+                "rr": wifi_rr_est,
+                "confidence": round(wifi_conf_used, 2),
+                "nlos_affected": False,
+            },
+            "mmwave": {
+                "hr": mm_hr_est,
+                "rr": mm_rr_est,
+                "confidence": round(mm_conf_used, 2),
+                "nlos_affected": bool(state.nlos_flag),
+            },
+            "thermal": {
+                "temp": temp,
+                "confidence": min(thermal_conf, 0.95),
+                "nlos_affected": False,
+            },
+        }
+    else:
+        # Fallback: fused value duplicated across modalities (original behavior)
+        modalities = {
+            "wifi": {
+                "hr": hr,
+                "rr": rr,
+                "confidence": min(wifi_conf, 0.95),
+                "nlos_affected": False,
+            },
+            "mmwave": {
+                "hr": hr,
+                "rr": rr,
+                "confidence": min(mmwave_conf * (0.5 if state.nlos_flag else 1.0), 0.95),
+                "nlos_affected": bool(state.nlos_flag),
+            },
+            "thermal": {
+                "temp": temp,
+                "confidence": min(thermal_conf, 0.95),
+                "nlos_affected": False,
+            },
+        }
     return json.dumps(modalities)
 
 

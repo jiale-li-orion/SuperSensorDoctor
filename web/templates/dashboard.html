@@ -50,6 +50,9 @@
         .btn-secondary { background: white; color: #475569; border: 1px solid #e2e8f0; }
         .btn-secondary:hover { background: #f8fafc; border-color: #cbd5e1; }
         .btn-secondary:disabled { color: #94a3b8; border-color: #f1f5f9; cursor: not-allowed; }
+        .btn-icon { font-size: 14px; }
+        .pv-controls { display: inline-flex; align-items: center; }
+        .pv-status { font-size: 13px; color: #64748b; }
 
         /* Vital Cards Grid */
         .vitals-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 24px; }
@@ -188,17 +191,15 @@
             <div class="meta">最后更新: <strong id="refresh-time">{{ now().strftime('%H:%M:%S') if now else '' }}</strong></div>
         </div>
 
-        <!-- Replay Control Panel -->
+        <!-- Data Loading Controls -->
         <div class="replay-bar" id="replay-bar">
-            <div class="status">
-                <span class="dot-indicator {% if replay_running %}active{% endif %}" id="replay-dot"></span>
-                <span id="replay-status-text">{% if replay_running %}运行中: {{ replay_count }} 个窗口已生成{% else %}空闲{% endif %}</span>
+            <div id="pv-controls" class="pv-controls">
+              <button id="btn-load-pv" class="btn btn-primary" onclick="loadPortableV2()">
+                <span class="btn-icon">📡</span> 加载 portable_v2 真实数据
+              </button>
             </div>
+            <div id="pv-status" class="pv-status" style="margin-top: 6px; font-size: 0.85em; color: #555;"></div>
             <div class="spacer"></div>
-            <button class="btn {% if replay_running %}btn-danger{% else %}btn-primary{% endif %}" id="btn-replay-toggle"
-                    onclick="toggleReplay()">
-                {% if replay_running %}■ 停止回放{% else %}▶ 开始回放{% endif %}
-            </button>
             <button class="btn btn-secondary" id="btn-load-data" onclick="loadTeamData()">
                 📂 加载团队数据
             </button>
@@ -210,7 +211,7 @@
             <h2>欢迎使用 SuperSenseDoctor</h2>
             <p>多模态感知数据融合看护系统已就绪。请选择数据来源开始监测。</p>
             <div class="btn-group">
-                <button class="btn btn-hero" onclick="startReplay()">▶ 开始合成数据回放</button>
+                <button class="btn btn-hero" onclick="loadPortableV2()">📡 加载 portable_v2 真实数据</button>
                 <button class="btn btn-hero-outline" onclick="loadTeamData()">📂 加载团队真实数据</button>
             </div>
         </div>
@@ -218,7 +219,7 @@
 
         <!-- Vital Signs Cards -->
         <div class="vitals-grid" id="vitals-grid" {% if total_windows == 0 and replay_count == 0 %}style="display:none;"{% endif %}>
-            <!-- 1. HR Card (enhanced) -->
+            <!-- 1. HR Card (enhanced + per-modality) -->
             <div class="vital-card" id="card-hr">
                 <div class="icon">❤️</div>
                 <div class="label">心率 HR</div>
@@ -227,14 +228,24 @@
                     <span id="v-hr-z-badge"></span>
                     <span id="v-hr-baseline"></span>
                 </div>
+                <div id="v-hr-permodality" style="margin-top:4px;font-size:11px;color:#94a3b8;display:none;">
+                    <span>WiFi: <strong id="v-hr-wifi">--</strong></span>
+                    <span style="margin-left:8px;">mmWave: <strong id="v-hr-mm">--</strong></span>
+                    <span style="margin-left:8px;">conf: <strong id="v-hr-conf">--</strong></span>
+                </div>
             </div>
 
-            <!-- 2. RR Card (unchanged) -->
+            <!-- 2. RR Card (per-modality) -->
             <div class="vital-card" id="card-rr">
                 <div class="icon">🫁</div>
                 <div class="label">呼吸率 RR</div>
                 <div class="value" id="v-rr">--</div>
                 <div class="sub" id="v-rr-sub">bpm</div>
+                <div id="v-rr-permodality" style="margin-top:4px;font-size:11px;color:#94a3b8;display:none;">
+                    <span>WiFi: <strong id="v-rr-wifi">--</strong></span>
+                    <span style="margin-left:8px;">mmWave: <strong id="v-rr-mm">--</strong></span>
+                    <span style="margin-left:8px;">conf: <strong id="v-rr-conf">--</strong></span>
+                </div>
             </div>
 
             <!-- 3. Temp Card (enhanced) -->
@@ -248,7 +259,7 @@
                 </div>
             </div>
 
-            <!-- 4. Sensor Confidence Card (enhanced with bars) -->
+            <!-- 4. Sensor Confidence Card (enhanced with per-metric bars) -->
             <div class="vital-card" id="card-sensor">
                 <div class="icon">📡</div>
                 <div class="label">传感置信度</div>
@@ -267,6 +278,18 @@
                     <div class="conf-bar-track"><div class="conf-bar-fill thermal" id="bar-thermal" style="width:0%"></div></div>
                     <span class="conf-bar-pct" id="pct-thermal">--</span>
                 </div>
+                <div id="metric-conf-bars" style="display:none;">
+                    <div class="conf-bar-row" style="margin-top:6px;padding-top:6px;border-top:1px solid #f1f5f9;">
+                        <span class="conf-bar-label">RR信</span>
+                        <div class="conf-bar-track"><div class="conf-bar-fill wifi" id="bar-rr-conf" style="width:0%"></div></div>
+                        <span class="conf-bar-pct" id="pct-rr-conf">--</span>
+                    </div>
+                    <div class="conf-bar-row">
+                        <span class="conf-bar-label">HR信</span>
+                        <div class="conf-bar-track"><div class="conf-bar-fill wifi" id="bar-hr-conf" style="width:0%"></div></div>
+                        <span class="conf-bar-pct" id="pct-hr-conf">--</span>
+                    </div>
+                </div>
                 <div class="sub" id="v-sensor-sub" style="margin-top:6px;">
                     <span id="v-sensor-nlos"></span>
                 </div>
@@ -280,12 +303,17 @@
                 <div class="sub" id="v-activity-sub"></div>
             </div>
 
-            <!-- 6. Fusion Verdict Card (NEW) -->
+            <!-- 6. Fusion Verdict Card (portable_v2 sources) -->
             <div class="vital-card" id="card-fusion">
                 <div class="icon">🔗</div>
                 <div class="label">融合判决</div>
                 <div id="fusion-content">
                     <div class="fusion-empty">无融合数据</div>
+                </div>
+                <div id="fusion-sources" style="margin-top:6px;font-size:11px;color:#94a3b8;display:none;">
+                    <span>RR源: <strong id="v-fusion-rr-source">--</strong></span>
+                    <span style="margin-left:8px;">HR源: <strong id="v-fusion-hr-source">--</strong></span>
+                    <span id="v-fusion-consistent-badge" style="margin-left:8px;"></span>
                 </div>
             </div>
         </div>
@@ -328,8 +356,8 @@
 
     <script>
     // Initial data load from server-rendered data
-    const INIT_REPLAY_RUNNING = {{ 'true' if replay_running else 'false' }};
-    const INIT_REPLAY_COUNT = {{ replay_count }};
+    const INIT_PV_LOADING = {{ 'true' if pv_loading else 'false' }};
+    const INIT_PV_COUNT = {{ pv_count }};
 
     // ── Z-score color helper ──
     function zScoreColor(z) {
@@ -421,8 +449,30 @@
             document.getElementById('v-hr-z-badge').innerHTML = zBadgeHTML(data.hr_z_score);
             document.getElementById('v-hr-baseline').innerHTML = baselineHTML(data.hr_baseline_mean);
 
+            // HR per-modality
+            const hrPm = document.getElementById('v-hr-permodality');
+            if (data.has_per_modality && data.hr_wifi !== null) {
+                hrPm.style.display = '';
+                document.getElementById('v-hr-wifi').textContent = data.hr_wifi.toFixed(1);
+                document.getElementById('v-hr-mm').textContent = data.hr_mm !== null ? data.hr_mm.toFixed(1) : '--';
+                document.getElementById('v-hr-conf').textContent = data.hr_conf !== null ? (data.hr_conf*100).toFixed(0)+'%' : '--';
+            } else {
+                hrPm.style.display = 'none';
+            }
+
             // RR
             document.getElementById('v-rr').textContent = data.respiration_rate !== null ? data.respiration_rate.toFixed(0) : '--';
+
+            // RR per-modality
+            const rrPm = document.getElementById('v-rr-permodality');
+            if (data.has_per_modality && data.rr_wifi !== null) {
+                rrPm.style.display = '';
+                document.getElementById('v-rr-wifi').textContent = data.rr_wifi.toFixed(1);
+                document.getElementById('v-rr-mm').textContent = data.rr_mm !== null ? data.rr_mm.toFixed(1) : '--';
+                document.getElementById('v-rr-conf').textContent = data.rr_conf !== null ? (data.rr_conf*100).toFixed(0)+'%' : '--';
+            } else {
+                rrPm.style.display = 'none';
+            }
 
             // Temp
             const tempEl = document.getElementById('v-temp');
@@ -452,6 +502,37 @@
             // Fusion verdict
             renderFusion(data.fusion);
 
+            // Fusion sources
+            const fs = document.getElementById('fusion-sources');
+            if (data.has_per_modality && data.fusion) {
+                fs.style.display = '';
+                document.getElementById('v-fusion-rr-source').textContent = data.rr_source || data.fusion.rr_source || '--';
+                document.getElementById('v-fusion-hr-source').textContent = data.hr_source || data.fusion.hr_source || '--';
+                const consistent = data.fusion.consistent;
+                const badgeEl = document.getElementById('v-fusion-consistent-badge');
+                if (consistent === true) {
+                    badgeEl.innerHTML = '<span class="badge badge-ok">→一致</span>';
+                } else if (consistent === false) {
+                    badgeEl.innerHTML = `<span class="badge badge-danger">→冲突 δ=${data.fusion.delta?.toFixed(1)||'?'}</span>`;
+                } else {
+                    badgeEl.innerHTML = '';
+                }
+            } else {
+                fs.style.display = 'none';
+            }
+
+            // Per-metric confidence bars
+            const mcDiv = document.getElementById('metric-conf-bars');
+            if (data.has_per_modality) {
+                mcDiv.style.display = '';
+                document.getElementById('bar-rr-conf').style.width = pctWidth(data.rr_conf);
+                document.getElementById('pct-rr-conf').textContent = pctText(data.rr_conf);
+                document.getElementById('bar-hr-conf').style.width = pctWidth(data.hr_conf);
+                document.getElementById('pct-hr-conf').textContent = pctText(data.hr_conf);
+            } else {
+                mcDiv.style.display = 'none';
+            }
+
             // Hide onboarding if visible
             const ob = document.getElementById('onboarding');
             if (ob) ob.style.display = 'none';
@@ -462,77 +543,37 @@
         } catch(e) { /* ignore */ }
     }
 
-    // ── Poll replay status ──
-    let prevRunning = INIT_REPLAY_RUNNING;
+    // ── portable_v2 data loading ──
 
-    async function pollReplayStatus() {
-        try {
-            const resp = await fetch('/api/replay/status');
-            const data = await resp.json();
-            if (data.status === 'error') return;
-
-            const running = !!data.running;
-            const count = data.windows_created || 0;
-
-            const dot = document.getElementById('replay-dot');
-            const statusText = document.getElementById('replay-status-text');
-            const toggleBtn = document.getElementById('btn-replay-toggle');
-            const ob = document.getElementById('onboarding');
-
-            if (running) {
-                dot.className = 'dot-indicator active';
-                statusText.textContent = '运行中: ' + count + ' 个窗口已生成';
-                toggleBtn.className = 'btn btn-danger';
-                toggleBtn.innerHTML = '■ 停止回放';
-                if (ob) ob.style.display = 'none';
-                const vg = document.getElementById('vitals-grid');
-                if (vg) vg.style.display = '';
-            } else {
-                dot.className = 'dot-indicator';
-                statusText.textContent = '空闲';
-                toggleBtn.className = 'btn btn-primary';
-                toggleBtn.innerHTML = '▶ 开始回放';
-            }
-
-            // Flash effect when replay just finished
-            if (prevRunning === true && running === false && count > 0) {
-                const bar = document.getElementById('replay-bar');
-                bar.classList.remove('flash-done');
-                void bar.offsetWidth; // reflow
-                bar.classList.add('flash-done');
-                setTimeout(() => bar.classList.remove('flash-done'), 1000);
-            }
-            prevRunning = running;
-        } catch(e) { /* ignore */ }
-    }
-
-    // ── Toggle replay ──
-    async function toggleReplay() {
-        const btn = document.getElementById('btn-replay-toggle');
+    async function loadPortableV2() {
+        const btn = document.getElementById('btn-load-pv');
+        const status = document.getElementById('pv-status');
         btn.disabled = true;
-        const isRunning = prevRunning;
-        try {
-            if (isRunning) {
-                await fetch('/api/replay/stop', { method: 'POST' });
-            } else {
-                await fetch('/api/replay/start', { method: 'POST' });
-            }
-            // Immediately poll to update state
-            await pollReplayStatus();
-        } catch(e) {
-            console.error('Replay toggle failed:', e);
-        }
-        btn.disabled = false;
-    }
+        btn.innerHTML = '<span class="btn-icon">⏳</span> 加载中...';
 
-    // ── Start replay (legacy, from old button) ──
-    async function startReplay() {
         try {
-            await fetch('/api/replay/start', { method: 'POST' });
-            await pollReplayStatus();
-            await pollVitals();
-        } catch(e) {
-            console.error('Start replay failed:', e);
+            const resp = await fetch('/api/data/load-portable-v2', { method: 'POST' });
+            const data = await resp.json();
+            status.textContent = `📡 portable_v2 加载中 (目标: ${data.windows_target || 2349} 窗口)...`;
+
+            // Poll progress
+            const poll = setInterval(async () => {
+                const sr = await fetch('/api/data/portable-v2-status');
+                const st = await sr.json();
+                if (st.loading) {
+                    status.textContent = `📡 已加载 ${st.windows_loaded}/${st.windows_target} 个窗口...`;
+                } else {
+                    clearInterval(poll);
+                    status.textContent = `✅ portable_v2 加载完成: ${st.windows_loaded} 个窗口`;
+                    btn.innerHTML = '<span class="btn-icon">📡</span> 重新加载 portable_v2 数据';
+                    btn.disabled = false;
+                    location.reload();  // refresh whole dashboard to show new data
+                }
+            }, 500);
+        } catch (e) {
+            status.textContent = '❌ 加载失败: ' + e.message;
+            btn.innerHTML = '<span class="btn-icon">📡</span> 加载 portable_v2 真实数据';
+            btn.disabled = false;
         }
     }
 
@@ -544,7 +585,6 @@
         try {
             const resp = await fetch('/api/data/load-team-data', { method: 'POST' });
             const data = await resp.json();
-            await pollReplayStatus();
             await pollVitals();
             // Reload page to get fresh stats/events
             location.reload();
@@ -607,13 +647,11 @@
     }
 
     // ── Auto-refresh timers ──
-    // Vitals and replay status both poll every 5s
+    // Vitals poll every 5s
     setInterval(pollVitals, 5000);
-    setInterval(pollReplayStatus, 5000);
 
     // Also poll immediately after initial render
     setTimeout(pollVitals, 500);
-    setTimeout(pollReplayStatus, 500);
     </script>
 </body>
 </html>

@@ -71,3 +71,15 @@ def init_db():
             conn.execute("ALTER TABLE sensing_windows ADD COLUMN modalities_json TEXT")
         except conn.OperationalError:
             pass  # column already exists
+        # Phase 1: portable_v2 per-modality estimates and confidence
+        for col in [
+            "rr_wifi REAL", "rr_mm REAL", "hr_wifi REAL", "hr_mm REAL",
+            "rr_conf REAL", "hr_conf REAL",
+            "quality_event INTEGER DEFAULT 0",
+            "rr_source TEXT", "hr_source TEXT",
+            "rr_truth REAL", "hr_truth REAL",
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE sensing_windows ADD COLUMN {col}")
+            except conn.OperationalError:
+                pass  # column already exists

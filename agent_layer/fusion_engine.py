@@ -137,11 +137,16 @@ class FusionEngine:
                 "mmwave_reliable": mmwave_reliable,
                 "thermal_reliable": thermal_reliable,
                 "nlos_flag": bool(state.nlos_flag),
+                "rr_source": state.rr_source,
+                "hr_source": state.hr_source,
+                "has_per_modality": state.hr_wifi is not None or state.rr_wifi is not None,
             },
             verdict={
                 "fused_value": fused_value,
                 "dominant_modality": dominant,
                 "rationale": rationale,
+                "rr_source": state.rr_source,
+                "hr_source": state.hr_source,
             },
         )
 

@@ -34,7 +34,20 @@ class StateObject:
     fall_status: Optional[str] = None  # "fall" | "no_fall" | None
 
     # 元数据
-    source: str = "replay"             # "replay" | "csv" | "xlsx"
+    source: str = "replay"             # "replay" | "csv" | "xlsx" | "portable_v2"
+
+    # ── Portable V2 per-modality fields ──
+    hr_wifi: Optional[float] = None
+    hr_mm: Optional[float] = None
+    rr_wifi: Optional[float] = None
+    rr_mm: Optional[float] = None
+    rr_conf: Optional[float] = None    # RR signal-processing confidence
+    hr_conf: Optional[float] = None    # HR signal-processing confidence
+    quality_event: int = 0
+    rr_source: Optional[str] = None
+    hr_source: Optional[str] = None
+    rr_truth: Optional[float] = None
+    hr_truth: Optional[float] = None
 
 
 @dataclass

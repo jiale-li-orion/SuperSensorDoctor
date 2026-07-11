@@ -17,6 +17,7 @@ from storage.models import (
 from storage.db import DB_PATH
 from sensing_simulator.replay_engine import ReplayEngine
 from sensing_simulator.sensor_hub import SensorHub
+from scripts.load_portable_v2 import load_portable_v2_csv
 from agent_layer.baseline_provider import BaselineProvider
 from agent_layer.fusion_engine import FusionEngine
 from agent_layer.state_objects import StateObject
@@ -59,6 +60,8 @@ async def dashboard(request: Request):
         "now": datetime.now,
         "replay_running": getattr(getattr(request.app.state, "replay_engine", None), "_running", False),
         "replay_count": getattr(getattr(request.app.state, "replay_engine", None), "_windows_created", 0),
+        "pv_loading": getattr(request.app.state, "pv_loading", False),
+        "pv_count": getattr(request.app.state, "pv_count", 0),
     })
 
 
@@ -170,6 +173,38 @@ async def load_team_data(request: Request):
     return {"status": "ok", "windows_loaded": count}
 
 
+@app.post("/api/data/load-portable-v2")
+async def load_portable_v2_endpoint(request: Request):
+    """Load 2,349 real per-modality windows from portable_v2 CSV through sensor_hub."""
+    hub = getattr(request.app.state, "sensor_hub", None)
+    if hub is None:
+        return {"status": "error", "message": "No sensor_hub configured"}
+
+    async def _load_loop():
+        request.app.state.pv_loading = True
+        request.app.state.pv_count = 0
+        try:
+            cnt = await load_portable_v2_csv(
+                hub,
+                progress_callback=lambda c: setattr(request.app.state, "pv_count", c),
+            )
+            request.app.state.pv_count = cnt
+        finally:
+            request.app.state.pv_loading = False
+
+    request.app.state.pv_task = asyncio.create_task(_load_loop())
+    return {"status": "started", "windows_target": 2349}
+
+
+@app.get("/api/data/portable-v2-status")
+async def portable_v2_status(request: Request):
+    return {
+        "loading": getattr(request.app.state, "pv_loading", False),
+        "windows_loaded": getattr(request.app.state, "pv_count", 0),
+        "windows_target": 2349,
+    }
+
+
 @app.get("/api/health")
 async def health():
     return {"status": "ok", "db": str(DB_PATH)}
@@ -201,9 +236,22 @@ async def api_vitals_latest():
         nlos_flag=bool(row.get("nlos_flag", False)),
         fall_status=row.get("fall_status"),
         activity_state=row.get("activity_state", "unknown"),
+        # Portable V2 per-modality fields
+        hr_wifi=row.get("hr_wifi"),
+        hr_mm=row.get("hr_mm"),
+        rr_wifi=row.get("rr_wifi"),
+        rr_mm=row.get("rr_mm"),
+        rr_conf=row.get("rr_conf"),
+        hr_conf=row.get("hr_conf"),
+        rr_source=row.get("rr_source"),
+        hr_source=row.get("hr_source"),
+        rr_truth=row.get("rr_truth"),
+        hr_truth=row.get("hr_truth"),
     )
     engine = FusionEngine()
     fusion_hr = engine.fuse(state, "hr")
+
+    has_pm = state.hr_wifi is not None or state.rr_wifi is not None
 
     return {
         "status": "ok",
@@ -221,10 +269,25 @@ async def api_vitals_latest():
         "nlos_flag": bool(row.get("nlos_flag", False)),
         "activity_state": row.get("activity_state", "unknown"),
         "fall_status": row.get("fall_status"),
+        # Portable V2 per-modality fields
+        "has_per_modality": has_pm,
+        "hr_wifi": state.hr_wifi,
+        "hr_mm": state.hr_mm,
+        "rr_wifi": state.rr_wifi,
+        "rr_mm": state.rr_mm,
+        "hr_conf": state.hr_conf,
+        "rr_conf": state.rr_conf,
+        "hr_source": state.hr_source,
+        "rr_source": state.rr_source,
         "fusion": {
             "dominant": fusion_hr.verdict.get("dominant_modality"),
             "fused_value": fusion_hr.verdict.get("fused_value"),
             "rationale": fusion_hr.verdict.get("rationale"),
+            "rr_source": fusion_hr.verdict.get("rr_source"),
+            "hr_source": fusion_hr.verdict.get("hr_source"),
+            "has_per_modality": fusion_hr.checks.get("has_per_modality", False),
+            "consistent": fusion_hr.checks.get("consistent"),
+            "delta": fusion_hr.checks.get("delta"),
         } if fusion_hr else None,
     }
 
