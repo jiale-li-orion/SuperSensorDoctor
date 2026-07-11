@@ -304,16 +304,17 @@
     // ── Fusion verdict rendering ──
     function renderFusion(fusion) {
         const container = document.getElementById('fusion-content');
-        if (!fusion || !fusion.dominant || fusion.dominant === 'none') {
+        if (!fusion || !fusion.verdict || !fusion.verdict.dominant_modality || fusion.verdict.dominant_modality === 'none') {
             container.innerHTML = '<div class="fusion-empty">无融合数据</div>';
             return;
         }
-        const dom = fusion.dominant;
+        const v = fusion.verdict;
+        const dom = v.dominant_modality;
         const tagClass = dom === 'wifi' ? 'tag-wifi' : dom === 'mmwave' ? 'tag-mmwave' : dom === 'fusion' ? 'tag-fusion' : 'tag-best-effort';
         const domLabel = dom === 'wifi' ? 'WiFi' : dom === 'mmwave' ? 'mmWave' : dom === 'fusion' ? '融合' : '最优选取';
-        const fv = fusion.fused_value;
+        const fv = v.fused_value;
         const fvDisplay = fv !== null && fv !== undefined ? fv.toFixed(1) : '--';
-        const rationale = fusion.rationale || '';
+        const rationale = v.rationale || '';
         container.innerHTML = `
             <div class="fusion-dominant">
                 <span class="tag-modality ${tagClass}">${domLabel}</span>
@@ -334,13 +335,19 @@
             const resp = await fetch('/api/vitals/latest');
             const data = await resp.json();
             if (data.status !== 'ok') return;
+            
+            const bl = data.baseline || {};
+            const q = data.quality || {};
+            const fusion = data.fusion || {};
+            const fv = fusion.verdict || {};
 
             // HR
             const hrEl = document.getElementById('v-hr');
             hrEl.textContent = data.heart_rate !== null ? data.heart_rate.toFixed(0) : '--';
-            applyValueColor(hrEl, data.hr_z_score);
-            document.getElementById('v-hr-z-badge').innerHTML = zBadgeHTML(data.hr_z_score);
-            document.getElementById('v-hr-baseline').innerHTML = baselineHTML(data.hr_baseline_mean);
+            const hrBl = bl.hr || {};
+            applyValueColor(hrEl, hrBl.z_score);
+            document.getElementById('v-hr-z-badge').innerHTML = zBadgeHTML(hrBl.z_score);
+            document.getElementById('v-hr-baseline').innerHTML = baselineHTML(hrBl.mean);
 
             // HR per-modality
             const hrPm = document.getElementById('v-hr-permodality');
@@ -370,43 +377,41 @@
             // Temp
             const tempEl = document.getElementById('v-temp');
             tempEl.textContent = data.body_temp !== null ? data.body_temp.toFixed(1) : '--';
-            applyValueColor(tempEl, data.temp_z_score);
-            document.getElementById('v-temp-z-badge').innerHTML = zBadgeHTML(data.temp_z_score);
-            document.getElementById('v-temp-baseline').innerHTML = baselineHTML(data.temp_baseline_mean);
+            const tempBl = bl.temp || {};
+            applyValueColor(tempEl, tempBl.z_score);
+            document.getElementById('v-temp-z-badge').innerHTML = zBadgeHTML(tempBl.z_score);
+            document.getElementById('v-temp-baseline').innerHTML = baselineHTML(tempBl.mean);
 
             // Sensor confidence bars
-            const wc = data.wifi_confidence;
-            const mc = data.mmwave_confidence;
-            const tc = data.thermal_confidence;
-            document.getElementById('bar-wifi').style.width = pctWidth(wc);
-            document.getElementById('pct-wifi').textContent = pctText(wc);
-            document.getElementById('bar-mmwave').style.width = pctWidth(mc);
-            document.getElementById('pct-mmwave').textContent = pctText(mc);
-            document.getElementById('bar-thermal').style.width = pctWidth(tc);
-            document.getElementById('pct-thermal').textContent = pctText(tc);
+            document.getElementById('bar-wifi').style.width = pctWidth(q.wifi_confidence);
+            document.getElementById('pct-wifi').textContent = pctText(q.wifi_confidence);
+            document.getElementById('bar-mmwave').style.width = pctWidth(q.mmwave_confidence);
+            document.getElementById('pct-mmwave').textContent = pctText(q.mmwave_confidence);
+            document.getElementById('bar-thermal').style.width = pctWidth(q.thermal_confidence);
+            document.getElementById('pct-thermal').textContent = pctText(q.thermal_confidence);
 
             // NLOS indicator
-            document.getElementById('v-sensor-nlos').textContent = data.nlos_flag ? '⚠ NLOS 遮挡' : '';
+            document.getElementById('v-sensor-nlos').textContent = q.nlos_flag ? '⚠ NLOS 遮挡' : '';
 
             // Activity
             document.getElementById('v-activity').textContent = data.activity_state || '--';
-            document.getElementById('v-activity-sub').textContent = data.nlos_flag ? 'NLOS 遮挡' : (data.fall_status === 'fall' ? '跌倒' : '正常');
+            document.getElementById('v-activity-sub').textContent = q.nlos_flag ? 'NLOS 遮挡' : (data.fall_status === 'fall' ? '跌倒' : '正常');
 
             // Fusion verdict
-            renderFusion(data.fusion);
+            renderFusion(fusion);
 
             // Fusion sources
             const fs = document.getElementById('fusion-sources');
-            if (data.has_per_modality && data.fusion) {
+            if (data.has_per_modality && fusion.metric) {
                 fs.style.display = '';
-                document.getElementById('v-fusion-rr-source').textContent = data.rr_source || data.fusion.rr_source || '--';
-                document.getElementById('v-fusion-hr-source').textContent = data.hr_source || data.fusion.hr_source || '--';
-                const consistent = data.fusion.consistent;
+                document.getElementById('v-fusion-rr-source').textContent = data.rr_source || fv.rr_source || '--';
+                document.getElementById('v-fusion-hr-source').textContent = data.hr_source || fv.hr_source || '--';
+                const chk = fusion.checks || {};
                 const badgeEl = document.getElementById('v-fusion-consistent-badge');
-                if (consistent === true) {
+                if (chk.consistent === true) {
                     badgeEl.innerHTML = '<span class="badge badge-ok">→一致</span>';
-                } else if (consistent === false) {
-                    badgeEl.innerHTML = `<span class="badge badge-danger">→冲突 δ=${data.fusion.delta?.toFixed(1)||'?'}</span>`;
+                } else if (chk.consistent === false) {
+                    badgeEl.innerHTML = `<span class="badge badge-danger">→冲突 δ=${(chk.delta||0).toFixed(1)}</span>`;
                 } else {
                     badgeEl.innerHTML = '';
                 }
@@ -431,8 +436,9 @@
             if (ob) ob.style.display = 'none';
             const vg = document.getElementById('vitals-grid');
             if (vg) vg.style.display = '';
+            const ts = document.getElementById('trend-section');
+            if (ts) ts.style.display = '';
 
-            document.getElementById('refresh-time').textContent = new Date().toLocaleTimeString('zh-CN', {hour12:false});
         } catch(e) { /* ignore */ }
     }
 
@@ -654,17 +660,6 @@
     if (document.getElementById('trend-section').style.display !== 'none') {
         setTimeout(initTrendChart, 1000);
     }
-    // Also handle onboarding transition: reload chart when data appears
-    const origPoll = pollVitals;
-    pollVitals = async function() {
-        await origPoll.call(this);
-        const vg = document.getElementById('vitals-grid');
-        const ts = document.getElementById('trend-section');
-        if (vg && vg.style.display !== 'none' && ts) {
-            ts.style.display = '';
-            if (!trendChart) setTimeout(initTrendChart, 500);
-        }
-    };
 
     // Handle window resize
     window.addEventListener('resize', () => { if (trendChart) trendChart.resize(); });
