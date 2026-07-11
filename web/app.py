@@ -1,5 +1,6 @@
 """FastAPI Web 入口 — 医生工作站"""
 
+import asyncio
 from pathlib import Path
 from datetime import datetime
 
@@ -56,33 +57,117 @@ async def dashboard(request: Request):
         "pending_events_list": pending[:10],
         "db_path": str(DB_PATH),
         "now": datetime.now,
+        "replay_running": getattr(getattr(request.app.state, "replay_engine", None), "_running", False),
+        "replay_count": getattr(getattr(request.app.state, "replay_engine", None), "_windows_created", 0),
     })
 
 
 @app.post("/api/replay/start")
 async def start_replay(request: Request):
-    """启动合成数据回放 — 通过 app.state.sensor_hub 进入完整 Agent 链路"""
-    hub = getattr(request.app.state, "sensor_hub", None) or SensorHub()
+    if getattr(request.app.state, "replay_running", False):
+        return {"status": "already_running", "windows_created": getattr(request.app.state, "replay_count", 0)}
+
+    hub = getattr(request.app.state, "sensor_hub", None)
+    if hub is None:
+        return {"status": "error", "message": "No sensor_hub configured"}
+
+    async def _replay_loop():
+        request.app.state.replay_running = True
+        request.app.state.replay_count = 0
+        try:
+            for state in ReplayEngine.generate_synthetic(duration_sec=30):
+                if not getattr(request.app.state, "replay_running", True):
+                    break
+                await hub.compose(
+                    window_id=state.window_id,
+                    timestamp=datetime.now(),
+                    data={
+                        "heart_rate": state.heart_rate,
+                        "respiration_rate": state.respiration_rate,
+                        "body_temp": state.body_temp,
+                        "wifi_confidence": state.wifi_confidence,
+                        "mmwave_confidence": state.mmwave_confidence,
+                        "thermal_confidence": state.thermal_confidence,
+                        "nlos_flag": state.nlos_flag,
+                        "fall_status": state.fall_status,
+                        "activity_state": state.activity_state,
+                        "source": state.source,
+                    },
+                )
+                request.app.state.replay_count += 1
+                await asyncio.sleep(0)
+        finally:
+            request.app.state.replay_running = False
+
+    request.app.state.replay_task = asyncio.create_task(_replay_loop())
+    return {"status": "started"}
+
+
+@app.post("/api/replay/stop")
+async def stop_replay(request: Request):
+    if getattr(request.app.state, "replay_running", False):
+        request.app.state.replay_running = False
+        task = getattr(request.app.state, "replay_task", None)
+        if task:
+            task.cancel()
+        return {"status": "stopped", "windows_created": getattr(request.app.state, "replay_count", 0)}
+    return {"status": "not_running"}
+
+
+@app.get("/api/replay/status")
+async def replay_status(request: Request):
+    return {
+        "running": getattr(request.app.state, "replay_running", False),
+        "windows_created": getattr(request.app.state, "replay_count", 0),
+    }
+
+
+@app.post("/api/data/load-team-data")
+async def load_team_data(request: Request):
+    """Load team data CSV/XLSX into DB through sensor_hub."""
+    import pandas as pd
+    from pathlib import Path
+
+    hub = getattr(request.app.state, "sensor_hub", None)
+    if hub is None:
+        return {"status": "error", "message": "No sensor_hub configured"}
+
+    project_root = Path(__file__).parent.parent
+    csv_path = project_root / "team_data" / "fused_vital_signs_timestamp_rr_hr.csv"
+    xlsx_path = project_root / "team_data" / "fall_status.xlsx"
+
+    if not csv_path.exists():
+        return {"status": "error", "message": f"CSV not found: {csv_path}"}
+
+    df = pd.read_csv(csv_path)
+    fall_df = pd.read_excel(xlsx_path) if xlsx_path.exists() else pd.DataFrame()
+
     count = 0
-    for state in ReplayEngine.generate_synthetic(duration_sec=30):
+    fall_windows = set()
+    if not fall_df.empty and "window_id" in fall_df.columns:
+        fall_windows = set(fall_df["window_id"].dropna().astype(str).tolist())
+
+    for _, row in df.iterrows():
+        window_id = str(row.get("window_id", f"team_{count}"))
         await hub.compose(
-            window_id=state.window_id,
-            timestamp=datetime.now(),
+            window_id=window_id,
+            timestamp=pd.to_datetime(row.get("timestamp", pd.Timestamp.now())).to_pydatetime(),
             data={
-                "heart_rate": state.heart_rate,
-                "respiration_rate": state.respiration_rate,
-                "body_temp": state.body_temp,
-                "wifi_confidence": state.wifi_confidence,
-                "mmwave_confidence": state.mmwave_confidence,
-                "thermal_confidence": state.thermal_confidence,
-                "nlos_flag": state.nlos_flag,
-                "fall_status": state.fall_status,
-                "activity_state": state.activity_state,
-                "source": state.source,
+                "heart_rate": float(row["hr"]) if pd.notna(row.get("hr")) else None,
+                "respiration_rate": float(row["rr"]) if pd.notna(row.get("rr")) else None,
+                "body_temp": float(row.get("body_temp", row.get("temp", 36.5))) if pd.notna(row.get("body_temp", row.get("temp", None))) else None,
+                "wifi_confidence": float(row.get("wifi_conf", 0.8)) if pd.notna(row.get("wifi_conf", None)) else 0.8,
+                "mmwave_confidence": float(row.get("mmwave_conf", 0.7)) if pd.notna(row.get("mmwave_conf", None)) else 0.7,
+                "thermal_confidence": float(row.get("thermal_conf", 0.75)) if pd.notna(row.get("thermal_conf", None)) else 0.75,
+                "nlos_flag": bool(row.get("nlos_flag", False)),
+                "fall_status": "fall" if window_id in fall_windows else "no_fall",
+                "activity_state": str(row.get("activity_state", "unknown")),
+                "source": "csv",
             },
         )
         count += 1
-    return {"status": "ok", "windows_created": count}
+
+    return {"status": "ok", "windows_loaded": count}
 
 
 @app.get("/api/health")
@@ -127,9 +212,12 @@ async def api_vitals_latest():
         "respiration_rate": row.get("rr"),
         "body_temp": row.get("body_temp"),
         "hr_z_score": round(hr_bl["z_score"], 2) if hr_bl else None,
+        "hr_baseline_mean": round(hr_bl["mean"], 1) if hr_bl else None,
         "temp_z_score": round(temp_bl["z_score"], 2) if temp_bl else None,
+        "temp_baseline_mean": round(temp_bl["mean"], 1) if temp_bl else None,
         "wifi_confidence": row.get("wifi_conf"),
         "mmwave_confidence": row.get("mmwave_conf"),
+        "thermal_confidence": row.get("thermal_conf"),
         "nlos_flag": bool(row.get("nlos_flag", False)),
         "activity_state": row.get("activity_state", "unknown"),
         "fall_status": row.get("fall_status"),

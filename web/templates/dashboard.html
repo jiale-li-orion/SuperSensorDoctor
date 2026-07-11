@@ -21,20 +21,86 @@
         .header .meta { font-size: 13px; color: #94a3b8; }
         .header .meta strong { color: #475569; }
 
+        /* Replay Control Panel */
+        .replay-bar {
+            background: white; border-radius: 12px; padding: 14px 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,.06); border: 1px solid #e2e8f0;
+            display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+            margin-bottom: 24px;
+        }
+        .replay-bar .status { font-size: 13px; color: #64748b; display: flex; align-items: center; gap: 6px; }
+        .replay-bar .status .dot-indicator {
+            display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+            background: #94a3b8; flex-shrink: 0;
+        }
+        .replay-bar .status .dot-indicator.active { background: #22c55e; animation: pulse-dot 1.4s ease-in-out infinite; }
+        @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:.4} }
+        .replay-bar .spacer { flex: 1; }
+        .btn {
+            padding: 8px 18px; border: none; border-radius: 8px; font-size: 13px; font-weight: 500;
+            cursor: pointer; transition: all .15s; display: inline-flex; align-items: center; gap: 6px;
+            white-space: nowrap;
+        }
+        .btn-primary { background: #1e293b; color: white; }
+        .btn-primary:hover { background: #0f172a; }
+        .btn-primary:disabled { background: #94a3b8; cursor: not-allowed; }
+        .btn-danger { background: #dc2626; color: white; }
+        .btn-danger:hover { background: #b91c1c; }
+        .btn-danger:disabled { background: #fca5a5; cursor: not-allowed; }
+        .btn-secondary { background: white; color: #475569; border: 1px solid #e2e8f0; }
+        .btn-secondary:hover { background: #f8fafc; border-color: #cbd5e1; }
+        .btn-secondary:disabled { color: #94a3b8; border-color: #f1f5f9; cursor: not-allowed; }
+
         /* Vital Cards Grid */
-        .vitals-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 24px; }
+        .vitals-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 24px; }
         .vital-card {
             background: white; border-radius: 12px; padding: 16px;
             box-shadow: 0 1px 3px rgba(0,0,0,.06); border: 1px solid #e2e8f0;
+            display: flex; flex-direction: column;
         }
         .vital-card .label { font-size: 12px; color: #94a3b8; font-weight: 500; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
         .vital-card .value { font-size: 26px; font-weight: 700; line-height: 1.2; }
+        .vital-card .value-sm { font-size: 18px; font-weight: 700; line-height: 1.2; }
         .vital-card .sub { font-size: 13px; color: #64748b; margin-top: 2px; }
         .vital-card .sub .badge { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-left: 4px; }
         .badge-ok { background: #dcfce7; color: #166534; }
         .badge-warn { background: #fef3c7; color: #92400e; }
         .badge-danger { background: #fee2e2; color: #991b1b; }
         .vital-card .icon { font-size: 18px; margin-bottom: 4px; }
+
+        /* Value color severity */
+        .value-green { color: #16a34a; }
+        .value-amber { color: #d97706; }
+        .value-red { color: #dc2626; }
+        .value-default { color: #1e293b; }
+
+        /* Confidence Bars */
+        .conf-bar-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+        .conf-bar-row:first-of-type { margin-top: 6px; }
+        .conf-bar-label { font-size: 11px; color: #64748b; min-width: 48px; flex-shrink: 0; font-weight: 500; }
+        .conf-bar-track { flex: 1; height: 6px; background: #f1f5f9; border-radius: 3px; overflow: hidden; }
+        .conf-bar-fill { height: 100%; border-radius: 3px; transition: width .4s ease; }
+        .conf-bar-fill.wifi { background: #3b82f6; }
+        .conf-bar-fill.mmwave { background: #8b5cf6; }
+        .conf-bar-fill.thermal { background: #f97316; }
+        .conf-bar-pct { font-size: 11px; color: #64748b; min-width: 36px; text-align: right; font-weight: 600; }
+
+        /* Fusion Verdict Card */
+        .fusion-dominant { font-size: 14px; font-weight: 600; margin-top: 4px; }
+        .fusion-dominant .tag-modality {
+            display: inline-block; padding: 1px 8px; border-radius: 4px;
+            font-size: 12px; font-weight: 600;
+        }
+        .tag-wifi { background: #dbeafe; color: #1d4ed8; }
+        .tag-mmwave { background: #ede9fe; color: #5b21b6; }
+        .tag-fusion { background: #d1fae5; color: #065f46; }
+        .tag-best-effort { background: #fef3c7; color: #92400e; }
+        .fusion-rationale { font-size: 12px; color: #94a3b8; margin-top: 4px; line-height: 1.4; }
+        .fusion-empty { font-size: 13px; color: #94a3b8; margin-top: 6px; }
+
+        /* Flash animation */
+        @keyframes flash-green { 0%{background:#bbf7d0} 100%{background:white} }
+        .flash-done { animation: flash-green .8s ease-out; }
 
         /* Main Grid */
         .main-grid { display: grid; grid-template-columns: 1fr 320px; gap: 16px; }
@@ -76,14 +142,6 @@
 
         /* Actions */
         .actions { margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap; }
-        .btn {
-            padding: 10px 20px; border: none; border-radius: 8px; font-size: 14px; font-weight: 500;
-            cursor: pointer; transition: all .15s; display: inline-flex; align-items: center; gap: 6px;
-        }
-        .btn-primary { background: #1e293b; color: white; }
-        .btn-primary:hover { background: #0f172a; }
-        .btn-secondary { background: white; color: #475569; border: 1px solid #e2e8f0; }
-        .btn-secondary:hover { background: #f8fafc; border-color: #cbd5e1; }
 
         /* Event color dot */
         .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
@@ -94,6 +152,25 @@
         .dot.conflict { background: #d946ef; }
         .dot.other { background: #94a3b8; }
 
+        /* Empty State (onboarding) */
+        .onboarding {
+            text-align: center; padding: 60px 24px;
+            background: white; border-radius: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,.06); border: 1px solid #e2e8f0;
+            margin-bottom: 24px;
+        }
+        .onboarding h2 { font-size: 24px; font-weight: 600; color: #0f172a; margin-bottom: 8px; }
+        .onboarding p { color: #64748b; font-size: 15px; margin-bottom: 28px; max-width: 480px; margin-left: auto; margin-right: auto; line-height: 1.6; }
+        .onboarding .btn-group { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+        .onboarding .btn { padding: 12px 28px; font-size: 15px; }
+        .onboarding .btn-hero { background: #1e293b; color: white; }
+        .onboarding .btn-hero:hover { background: #0f172a; }
+        .onboarding .btn-hero-outline { background: white; color: #1e293b; border: 2px solid #1e293b; }
+        .onboarding .btn-hero-outline:hover { background: #f8fafc; }
+
+        @media (max-width: 1024px) {
+            .vitals-grid { grid-template-columns: repeat(3, 1fr); }
+        }
         @media (max-width: 768px) {
             .vitals-grid { grid-template-columns: repeat(2, 1fr); }
             .main-grid { grid-template-columns: 1fr; }
@@ -111,37 +188,105 @@
             <div class="meta">最后更新: <strong id="refresh-time">{{ now().strftime('%H:%M:%S') if now else '' }}</strong></div>
         </div>
 
+        <!-- Replay Control Panel -->
+        <div class="replay-bar" id="replay-bar">
+            <div class="status">
+                <span class="dot-indicator {% if replay_running %}active{% endif %}" id="replay-dot"></span>
+                <span id="replay-status-text">{% if replay_running %}运行中: {{ replay_count }} 个窗口已生成{% else %}空闲{% endif %}</span>
+            </div>
+            <div class="spacer"></div>
+            <button class="btn {% if replay_running %}btn-danger{% else %}btn-primary{% endif %}" id="btn-replay-toggle"
+                    onclick="toggleReplay()">
+                {% if replay_running %}■ 停止回放{% else %}▶ 开始回放{% endif %}
+            </button>
+            <button class="btn btn-secondary" id="btn-load-data" onclick="loadTeamData()">
+                📂 加载团队数据
+            </button>
+        </div>
+
+        <!-- Empty State (onboarding) when no data -->
+        {% if total_windows == 0 and replay_count == 0 %}
+        <div class="onboarding" id="onboarding">
+            <h2>欢迎使用 SuperSenseDoctor</h2>
+            <p>多模态感知数据融合看护系统已就绪。请选择数据来源开始监测。</p>
+            <div class="btn-group">
+                <button class="btn btn-hero" onclick="startReplay()">▶ 开始合成数据回放</button>
+                <button class="btn btn-hero-outline" onclick="loadTeamData()">📂 加载团队真实数据</button>
+            </div>
+        </div>
+        {% endif %}
+
         <!-- Vital Signs Cards -->
-        <div class="vitals-grid" id="vitals-grid">
+        <div class="vitals-grid" id="vitals-grid" {% if total_windows == 0 and replay_count == 0 %}style="display:none;"{% endif %}>
+            <!-- 1. HR Card (enhanced) -->
             <div class="vital-card" id="card-hr">
                 <div class="icon">❤️</div>
                 <div class="label">心率 HR</div>
-                <div class="value" id="v-hr">--</div>
-                <div class="sub" id="v-hr-sub">bpm</div>
+                <div class="value value-default" id="v-hr">--</div>
+                <div class="sub" id="v-hr-sub">
+                    <span id="v-hr-z-badge"></span>
+                    <span id="v-hr-baseline"></span>
+                </div>
             </div>
+
+            <!-- 2. RR Card (unchanged) -->
             <div class="vital-card" id="card-rr">
                 <div class="icon">🫁</div>
                 <div class="label">呼吸率 RR</div>
                 <div class="value" id="v-rr">--</div>
                 <div class="sub" id="v-rr-sub">bpm</div>
             </div>
+
+            <!-- 3. Temp Card (enhanced) -->
             <div class="vital-card" id="card-temp">
                 <div class="icon">🌡️</div>
                 <div class="label">体温 TEMP</div>
-                <div class="value" id="v-temp">--</div>
-                <div class="sub" id="v-temp-sub">°C</div>
+                <div class="value value-default" id="v-temp">--</div>
+                <div class="sub" id="v-temp-sub">
+                    <span id="v-temp-z-badge"></span>
+                    <span id="v-temp-baseline"></span>
+                </div>
             </div>
+
+            <!-- 4. Sensor Confidence Card (enhanced with bars) -->
             <div class="vital-card" id="card-sensor">
                 <div class="icon">📡</div>
-                <div class="label">传感信号</div>
-                <div class="value" id="v-sensor" style="font-size:20px;">--</div>
-                <div class="sub" id="v-sensor-sub">WiFi / mmWave</div>
+                <div class="label">传感置信度</div>
+                <div class="conf-bar-row">
+                    <span class="conf-bar-label">WiFi</span>
+                    <div class="conf-bar-track"><div class="conf-bar-fill wifi" id="bar-wifi" style="width:0%"></div></div>
+                    <span class="conf-bar-pct" id="pct-wifi">--</span>
+                </div>
+                <div class="conf-bar-row">
+                    <span class="conf-bar-label">mmWave</span>
+                    <div class="conf-bar-track"><div class="conf-bar-fill mmwave" id="bar-mmwave" style="width:0%"></div></div>
+                    <span class="conf-bar-pct" id="pct-mmwave">--</span>
+                </div>
+                <div class="conf-bar-row">
+                    <span class="conf-bar-label">Thermal</span>
+                    <div class="conf-bar-track"><div class="conf-bar-fill thermal" id="bar-thermal" style="width:0%"></div></div>
+                    <span class="conf-bar-pct" id="pct-thermal">--</span>
+                </div>
+                <div class="sub" id="v-sensor-sub" style="margin-top:6px;">
+                    <span id="v-sensor-nlos"></span>
+                </div>
             </div>
+
+            <!-- 5. Activity State Card -->
             <div class="vital-card" id="card-activity">
                 <div class="icon">⚡</div>
                 <div class="label">活动状态</div>
-                <div class="value" id="v-activity" style="font-size:20px;">--</div>
+                <div class="value value-sm" id="v-activity">--</div>
                 <div class="sub" id="v-activity-sub"></div>
+            </div>
+
+            <!-- 6. Fusion Verdict Card (NEW) -->
+            <div class="vital-card" id="card-fusion">
+                <div class="icon">🔗</div>
+                <div class="label">融合判决</div>
+                <div id="fusion-content">
+                    <div class="fusion-empty">无融合数据</div>
+                </div>
             </div>
         </div>
 
@@ -152,9 +297,6 @@
                 <h2>最近异常事件</h2>
                 <div id="events-container">
                     <div class="empty-state">暂无异常事件</div>
-                </div>
-                <div class="actions">
-                    <button class="btn btn-primary" onclick="startReplay()">▶ 启动数据回放</button>
                 </div>
             </div>
 
@@ -186,10 +328,241 @@
 
     <script>
     // Initial data load from server-rendered data
-    const INIT_WINDOWS = {{ total_windows }};
-    const INIT_PENDING = {{ pending_events }};
-    const INIT_EPISODES = {{ total_episodes }};
-    const INIT_AVG_HR = {{ avg_heart_rate or 'null' }};
+    const INIT_REPLAY_RUNNING = {{ 'true' if replay_running else 'false' }};
+    const INIT_REPLAY_COUNT = {{ replay_count }};
+
+    // ── Z-score color helper ──
+    function zScoreColor(z) {
+        if (z === null || z === undefined) return '#94a3b8';
+        const abs = Math.abs(z);
+        if (abs < 1.0) return '#16a34a';
+        if (abs < 2.0) return '#d97706';
+        return '#dc2626';
+    }
+
+    function zScoreBadgeClass(z) {
+        if (z === null || z === undefined) return '';
+        const abs = Math.abs(z);
+        if (abs < 1.0) return 'badge-ok';
+        if (abs < 2.0) return 'badge-warn';
+        return 'badge-danger';
+    }
+
+    function valueColorClass(z) {
+        if (z === null || z === undefined) return 'value-default';
+        const abs = Math.abs(z);
+        if (abs < 1.0) return 'value-default';
+        if (abs < 2.0) return 'value-amber';
+        return 'value-red';
+    }
+
+    // ── Z-score badge HTML ──
+    function zBadgeHTML(z) {
+        if (z === null || z === undefined) return '';
+        const sign = z > 0 ? '+' : '';
+        return `<span class="badge ${zScoreBadgeClass(z)}">z=${sign}${z.toFixed(1)}</span>`;
+    }
+
+    // ── Baseline reference HTML ──
+    function baselineHTML(mean) {
+        if (mean === null || mean === undefined) return '';
+        return `<span style="font-size:12px;color:#94a3b8;margin-left:6px;">(基线: ${mean})</span>`;
+    }
+
+    // ── Confidence percentage text ──
+    function pctText(val) {
+        if (val === null || val === undefined) return '--';
+        return (val * 100).toFixed(0) + '%';
+    }
+
+    function pctWidth(val) {
+        if (val === null || val === undefined) return '0%';
+        return Math.round(val * 100) + '%';
+    }
+
+    // ── Fusion verdict rendering ──
+    function renderFusion(fusion) {
+        const container = document.getElementById('fusion-content');
+        if (!fusion || !fusion.dominant || fusion.dominant === 'none') {
+            container.innerHTML = '<div class="fusion-empty">无融合数据</div>';
+            return;
+        }
+        const dom = fusion.dominant;
+        const tagClass = dom === 'wifi' ? 'tag-wifi' : dom === 'mmwave' ? 'tag-mmwave' : dom === 'fusion' ? 'tag-fusion' : 'tag-best-effort';
+        const domLabel = dom === 'wifi' ? 'WiFi' : dom === 'mmwave' ? 'mmWave' : dom === 'fusion' ? '融合' : '最优选取';
+        const fv = fusion.fused_value;
+        const fvDisplay = fv !== null && fv !== undefined ? fv.toFixed(1) : '--';
+        const rationale = fusion.rationale || '';
+        container.innerHTML = `
+            <div class="fusion-dominant">
+                <span class="tag-modality ${tagClass}">${domLabel}</span>
+                <span style="font-size:20px;font-weight:700;margin-left:8px;">${fvDisplay}</span>
+            </div>
+            <div class="fusion-rationale" title="${rationale.replace(/"/g,'&quot;')}">${rationale}</div>
+        `;
+    }
+
+    // ── Update card value color based on z-score ──
+    function applyValueColor(element, z) {
+        element.className = 'value ' + valueColorClass(z);
+    }
+
+    // ── Poll vitals ──
+    async function pollVitals() {
+        try {
+            const resp = await fetch('/api/vitals/latest');
+            const data = await resp.json();
+            if (data.status !== 'ok') return;
+
+            // HR
+            const hrEl = document.getElementById('v-hr');
+            hrEl.textContent = data.heart_rate !== null ? data.heart_rate.toFixed(0) : '--';
+            applyValueColor(hrEl, data.hr_z_score);
+            document.getElementById('v-hr-z-badge').innerHTML = zBadgeHTML(data.hr_z_score);
+            document.getElementById('v-hr-baseline').innerHTML = baselineHTML(data.hr_baseline_mean);
+
+            // RR
+            document.getElementById('v-rr').textContent = data.respiration_rate !== null ? data.respiration_rate.toFixed(0) : '--';
+
+            // Temp
+            const tempEl = document.getElementById('v-temp');
+            tempEl.textContent = data.body_temp !== null ? data.body_temp.toFixed(1) : '--';
+            applyValueColor(tempEl, data.temp_z_score);
+            document.getElementById('v-temp-z-badge').innerHTML = zBadgeHTML(data.temp_z_score);
+            document.getElementById('v-temp-baseline').innerHTML = baselineHTML(data.temp_baseline_mean);
+
+            // Sensor confidence bars
+            const wc = data.wifi_confidence;
+            const mc = data.mmwave_confidence;
+            const tc = data.thermal_confidence;
+            document.getElementById('bar-wifi').style.width = pctWidth(wc);
+            document.getElementById('pct-wifi').textContent = pctText(wc);
+            document.getElementById('bar-mmwave').style.width = pctWidth(mc);
+            document.getElementById('pct-mmwave').textContent = pctText(mc);
+            document.getElementById('bar-thermal').style.width = pctWidth(tc);
+            document.getElementById('pct-thermal').textContent = pctText(tc);
+
+            // NLOS indicator
+            document.getElementById('v-sensor-nlos').textContent = data.nlos_flag ? '⚠ NLOS 遮挡' : '';
+
+            // Activity
+            document.getElementById('v-activity').textContent = data.activity_state || '--';
+            document.getElementById('v-activity-sub').textContent = data.nlos_flag ? 'NLOS 遮挡' : (data.fall_status === 'fall' ? '跌倒' : '正常');
+
+            // Fusion verdict
+            renderFusion(data.fusion);
+
+            // Hide onboarding if visible
+            const ob = document.getElementById('onboarding');
+            if (ob) ob.style.display = 'none';
+            const vg = document.getElementById('vitals-grid');
+            if (vg) vg.style.display = '';
+
+            document.getElementById('refresh-time').textContent = new Date().toLocaleTimeString('zh-CN', {hour12:false});
+        } catch(e) { /* ignore */ }
+    }
+
+    // ── Poll replay status ──
+    let prevRunning = INIT_REPLAY_RUNNING;
+
+    async function pollReplayStatus() {
+        try {
+            const resp = await fetch('/api/replay/status');
+            const data = await resp.json();
+            if (data.status === 'error') return;
+
+            const running = !!data.running;
+            const count = data.windows_created || 0;
+
+            const dot = document.getElementById('replay-dot');
+            const statusText = document.getElementById('replay-status-text');
+            const toggleBtn = document.getElementById('btn-replay-toggle');
+            const ob = document.getElementById('onboarding');
+
+            if (running) {
+                dot.className = 'dot-indicator active';
+                statusText.textContent = '运行中: ' + count + ' 个窗口已生成';
+                toggleBtn.className = 'btn btn-danger';
+                toggleBtn.innerHTML = '■ 停止回放';
+                if (ob) ob.style.display = 'none';
+                const vg = document.getElementById('vitals-grid');
+                if (vg) vg.style.display = '';
+            } else {
+                dot.className = 'dot-indicator';
+                statusText.textContent = '空闲';
+                toggleBtn.className = 'btn btn-primary';
+                toggleBtn.innerHTML = '▶ 开始回放';
+            }
+
+            // Flash effect when replay just finished
+            if (prevRunning === true && running === false && count > 0) {
+                const bar = document.getElementById('replay-bar');
+                bar.classList.remove('flash-done');
+                void bar.offsetWidth; // reflow
+                bar.classList.add('flash-done');
+                setTimeout(() => bar.classList.remove('flash-done'), 1000);
+            }
+            prevRunning = running;
+        } catch(e) { /* ignore */ }
+    }
+
+    // ── Toggle replay ──
+    async function toggleReplay() {
+        const btn = document.getElementById('btn-replay-toggle');
+        btn.disabled = true;
+        const isRunning = prevRunning;
+        try {
+            if (isRunning) {
+                await fetch('/api/replay/stop', { method: 'POST' });
+            } else {
+                await fetch('/api/replay/start', { method: 'POST' });
+            }
+            // Immediately poll to update state
+            await pollReplayStatus();
+        } catch(e) {
+            console.error('Replay toggle failed:', e);
+        }
+        btn.disabled = false;
+    }
+
+    // ── Start replay (legacy, from old button) ──
+    async function startReplay() {
+        try {
+            await fetch('/api/replay/start', { method: 'POST' });
+            await pollReplayStatus();
+            await pollVitals();
+        } catch(e) {
+            console.error('Start replay failed:', e);
+        }
+    }
+
+    // ── Load team data ──
+    async function loadTeamData() {
+        const btn = document.getElementById('btn-load-data');
+        btn.disabled = true;
+        btn.textContent = '加载中...';
+        try {
+            const resp = await fetch('/api/data/load-team-data', { method: 'POST' });
+            const data = await resp.json();
+            await pollReplayStatus();
+            await pollVitals();
+            // Reload page to get fresh stats/events
+            location.reload();
+        } catch(e) {
+            console.error('Load data failed:', e);
+            btn.disabled = false;
+            btn.textContent = '📂 加载团队数据';
+        }
+    }
+
+    // ── Initial render ──
+    // Render server-provided events
+    (function() {
+        try {
+            const episodes = {{ recent_episodes_json|safe }};
+            renderEvents(episodes);
+        } catch(e) { /* ignore */ }
+    })();
 
     function getEventDot(type) {
         if (type.startsWith('hr')) return 'dot hr';
@@ -217,11 +590,12 @@
             const level = d.level || 'L0';
             const interp = d.event_interpretation || d.explanation || '';
             const ts = ep.start_time ? (ep.start_time.slice(0,10) + ' ' + ep.start_time.slice(11,16)) : '';
+            const badgeCls = level.replace('L','').replace('0','ok').replace('1','warn').replace('2','warn').replace('3','danger').replace('4','danger');
             html += `
                 <div class="event-card">
                     <div class="event-header">
                         <div class="event-type"><span class="dot ${getEventDot('hr_abnormal')}"></span>${d.label || level}</div>
-                        <div class="event-time">${ts} <span class="badge badge-${level.replace('L','').replace('0','ok').replace('1','warn').replace('2','warn').replace('3','danger').replace('4','danger')}">${level}</span></div>
+                        <div class="event-time">${ts} <span class="badge badge-${badgeCls}">${level}</span></div>
                     </div>
                     <div class="event-body">${interp || '—'}</div>
                     <div class="event-tags"></div>
@@ -232,49 +606,14 @@
         container.innerHTML = html;
     }
 
-    // Server-rendered episode data
-    renderEvents({{ recent_episodes_json|safe }});
+    // ── Auto-refresh timers ──
+    // Vitals and replay status both poll every 5s
+    setInterval(pollVitals, 5000);
+    setInterval(pollReplayStatus, 5000);
 
-    async function startReplay() {
-        const btn = event.target;
-        btn.disabled = true;
-        btn.textContent = '回放中...';
-        try {
-            const resp = await fetch('/api/replay/start', { method: 'POST' });
-            const data = await resp.json();
-            alert(`回放完成: 创建了 ${data.windows_created} 个窗口`);
-            location.reload();
-        } catch(e) {
-            alert('回放失败: ' + e.message);
-        }
-        btn.disabled = false;
-        btn.textContent = '▶ 启动数据回放';
-    }
-
-    // Auto-refresh vitals every 5 seconds
-    setInterval(async () => {
-        try {
-            const resp = await fetch('/api/vitals/latest');
-            const data = await resp.json();
-            if (data.status !== 'ok') return;
-
-            document.getElementById('v-hr').textContent = data.heart_rate !== null ? data.heart_rate.toFixed(0) : '--';
-            document.getElementById('v-hr-sub').textContent = data.hr_z_score !== null ? `z_score: ${data.hr_z_score}` : 'bpm';
-
-            document.getElementById('v-rr').textContent = data.respiration_rate !== null ? data.respiration_rate.toFixed(0) : '--';
-
-            document.getElementById('v-temp').textContent = data.body_temp !== null ? data.body_temp.toFixed(1) : '--';
-            document.getElementById('v-temp-sub').textContent = data.temp_z_score !== null ? `z_score: ${data.temp_z_score}` : '°C';
-
-            document.getElementById('v-sensor').textContent = data.wifi_confidence !== null ? data.wifi_confidence.toFixed(2) : '--';
-            document.getElementById('v-sensor-sub').textContent = `WiFi / mmWave: ${data.mmwave_confidence !== null ? data.mmwave_confidence.toFixed(2) : '--'}`;
-
-            document.getElementById('v-activity').textContent = data.activity_state || '--';
-            document.getElementById('v-activity-sub').textContent = data.nlos_flag ? '⚠️ NLOS 遮挡' : (data.fall_status === 'fall' ? '🆘 跌倒' : '正常');
-
-            document.getElementById('refresh-time').textContent = new Date().toLocaleTimeString('zh-CN', {hour12:false});
-        } catch(e) { /* ignore */ }
-    }, 5000);
+    // Also poll immediately after initial render
+    setTimeout(pollVitals, 500);
+    setTimeout(pollReplayStatus, 500);
     </script>
 </body>
 </html>
