@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>诊断详情 — SuperSenseDoctor</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, 'Inter', system-ui, sans-serif; background: #f1f5f9; color: #1e293b; }
+        .page { max-width: 900px; margin: 0 auto; padding: 24px; }
+        .back { display: inline-block; margin-bottom: 16px; color: #2563eb; text-decoration: none; font-size: 14px; font-weight: 500; }
+        .back:hover { text-decoration: underline; }
+        .card { background: white; border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.06); border: 1px solid #e2e8f0; }
+        .card h2 { font-size: 16px; font-weight: 600; margin-bottom: 12px; color: #0f172a; }
+        .header-card { display: flex; justify-content: space-between; align-items: center; }
+        .header-card h1 { font-size: 20px; font-weight: 600; }
+        .badge { display: inline-block; padding: 4px 12px; border-radius: 6px; font-size: 14px; font-weight: 600; }
+        .badge.L0 { background: #dcfce7; color: #166534; }
+        .badge.L1 { background: #fef9c3; color: #854d0e; }
+        .badge.L2 { background: #fed7aa; color: #9a3412; }
+        .badge.L3 { background: #fecaca; color: #991b1b; }
+        .badge.L4 { background: #fecaca; color: #7f1d1d; }
+        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .info-item { padding: 8px 0; }
+        .info-item .label { font-size: 12px; color: #94a3b8; text-transform: uppercase; letter-spacing: .5px; }
+        .info-item .val { font-size: 16px; font-weight: 600; margin-top: 2px; }
+        .info-item .val small { font-weight: 400; color: #64748b; font-size: 13px; }
+        .value-group { display: flex; gap: 24px; flex-wrap: wrap; }
+        .value-item { text-align: center; }
+        .value-item .num { font-size: 24px; font-weight: 700; }
+        .value-item .lbl { font-size: 12px; color: #94a3b8; margin-top: 2px; }
+        .value-item .extra { font-size: 12px; color: #64748b; }
+        .sep { border: none; border-top: 1px solid #e2e8f0; margin: 16px 0; }
+        .chain-step { padding: 10px 0; border-bottom: 1px solid #f1f5f9; font-size: 14px; }
+        .chain-step:last-child { border-bottom: none; }
+        .chain-step .num { display: inline-block; width: 24px; height: 24px; line-height: 24px; text-align: center; background: #e0f2fe; color: #0369a1; border-radius: 50%; font-size: 12px; font-weight: 600; margin-right: 8px; }
+        .tool-result { margin: 6px 0 6px 32px; font-size: 13px; color: #64748b; white-space: pre-wrap; max-height: 100px; overflow-y: auto; }
+        .footer { margin-top: 24px; color: #94a3b8; font-size: 12px; text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <a class="back" href="/">← 返回仪表板</a>
+
+        <div class="card header-card">
+            <div>
+                <h1>诊断详情</h1>
+                <div style="color:#64748b;font-size:14px;margin-top:4px;">{{ episode.episode_id }}</div>
+            </div>
+            <div>
+                {% set lv = episode.decision.get('level', 'L0') or 'L0' %}
+                <span class="badge {{ lv }}">{{ lv }}</span>
+                <div style="text-align:right;margin-top:4px;font-size:13px;color:#64748b;">{{ episode.decision.get('label', '') }}</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>事件信息</h2>
+            <div class="info-grid">
+                <div class="info-item">
+                    <div class="label">事件类型</div>
+                    <div class="val">{{ health_event.event_type if health_event else episode.episode_id }}</div>
+                </div>
+                <div class="info-item">
+                    <div class="label">触发原因</div>
+                    <div class="val"><small>{{ (health_event.trigger_reason if health_event else '')[:80] }}</small></div>
+                </div>
+                <div class="info-item">
+                    <div class="label">发生时间</div>
+                    <div class="val"><small>{{ episode.start_time or '—' }}</small></div>
+                </div>
+                <div class="info-item">
+                    <div class="label">处理时间</div>
+                    <div class="val"><small>{{ episode.end_time or '—' }}</small></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>体征快照 · 基线 · 融合裁决</h2>
+            {% set sensing = episode.evidence.get('sensing_summary', {}) %}
+            <div class="value-group">
+                <div class="value-item">
+                    <div class="num" style="color:#dc2626;">{{ sensing.get('heart_rate', '—') }}</div>
+                    <div class="lbl">HR (bpm)</div>
+                    <div class="extra">{{ (health_event.rule_markers.get('hr_z_score', '') if health_event else '') and ('z=' ~ health_event.rule_markers.hr_z_score) or '' }}</div>
+                </div>
+                <div class="value-item">
+                    <div class="num" style="color:#8b5cf6;">{{ sensing.get('respiration_rate', '—') }}</div>
+                    <div class="lbl">RR (bpm)</div>
+                </div>
+                <div class="value-item">
+                    <div class="num" style="color:#f97316;">{{ sensing.get('body_temp', '—') }}</div>
+                    <div class="lbl">Temp (°C)</div>
+                </div>
+                <div class="value-item">
+                    <div class="num" style="font-size:18px;">{{ sensing.get('wifi_confidence', '—') }}</div>
+                    <div class="lbl">WiFi 置信度</div>
+                </div>
+                <div class="value-item">
+                    <div class="num" style="font-size:18px;">{{ sensing.get('mmwave_confidence', '—') }}</div>
+                    <div class="lbl">mmWave 置信度</div>
+                </div>
+            </div>
+            <hr class="sep">
+            {% set markers = health_event.rule_markers if health_event else {} %}
+            {% if markers %}
+            <div style="font-size:13px;color:#475569;line-height:1.8;">
+                {% if markers.hr_z_score %}z_score: {{ markers.hr_z_score }} (阈值: 2.0){% endif %}
+                {% if markers.duration_sec %} · 持续: {{ markers.duration_sec }}s{% endif %}
+                {% if markers.hr_deviation %} · 偏差: {{ markers.hr_deviation }} bpm{% endif %}
+                {% if markers.hr_modality_delta %} · 模态差异: {{ markers.hr_modality_delta }} (信任: {{ markers.hr_dominant }}){% endif %}
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="card">
+            <h2>证据链</h2>
+            {% set evidence_list = episode.evidence.get('tool_results', []) %}
+            {% if evidence_list %}
+                {% for tr in evidence_list %}
+                <div class="chain-step">
+                    <span class="num">{{ loop.index }}</span>
+                    <strong>{{ tr.get('tool', tr.get('name', 'tool')) }}</strong>
+                    <div class="tool-result">{{ tr.get('result', {}).get('status', '') }} — {{ tr.get('result', {}) }}</div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="chain-step"><span class="num">1</span> <strong>Reflex Arc</strong> — 快速反射路径</div>
+            {% endif %}
+        </div>
+
+        <div class="card">
+            <h2>决策详情</h2>
+            <div class="info-grid">
+                <div class="info-item">
+                    <div class="label">解释</div>
+                    <div class="val"><small>{{ episode.decision.get('event_interpretation', '') }}</small></div>
+                </div>
+                <div class="info-item">
+                    <div class="label">行动</div>
+                    <div class="val">{{ episode.action.get('channel', '—') }}</div>
+                </div>
+                <div class="info-item">
+                    <div class="label">复查间隔</div>
+                    <div class="val">{{ episode.action.get('recheck_after_sec', episode.action.get('recheck_after', '—')) }}s</div>
+                </div>
+                <div class="info-item">
+                    <div class="label">不确定度</div>
+                    <div class="val"><small>{{ episode.decision.get('uncertainty', {}) }}</small></div>
+                </div>
+                <div class="info-item">
+                    <div class="label">安全边界</div>
+                    <div class="val">{{ episode.decision.get('safety_boundary', 'care_support_only') }}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>审计</h2>
+            <div class="info-grid">
+                <div class="info-item">
+                    <div class="label">工具调用</div>
+                    <div class="val"><small>{{ episode.audit.get('tools_called', []) }}</small></div>
+                </div>
+                <div class="info-item">
+                    <div class="label">步骤数</div>
+                    <div class="val">{{ episode.audit.get('step_count', 0) }}</div>
+                </div>
+                <div class="info-item">
+                    <div class="label">走向</div>
+                    <div class="val">{{ '反射弧' if episode.audit.get('reflex') else ('LLM ReAct (' ~ episode.audit.get('step_count', '?') ~ ' steps)') }}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            SuperSenseDoctor v0.1.0 — 仅用于论文开发测试
+        </div>
+    </div>
+</body>
+</html>

@@ -37,7 +37,12 @@ class BaselineProvider:
         col = COL_MAP.get(metric)
         if col is None:
             return None
-        
+
+        # Whitelist guard: only allow known column names in the SQL query
+        _ALLOWED_COLS = {"hr", "rr", "body_temp"}
+        if col not in _ALLOWED_COLS:
+            return None
+
         threshold = (at_timestamp - timedelta(days=self.days)).isoformat()
         ts_end = at_timestamp.isoformat()
 

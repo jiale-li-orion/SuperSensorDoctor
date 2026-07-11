@@ -2,101 +2,239 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>SuperSenseDoctor — 医生工作站</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SuperSenseDoctor — 智慧看护工作站</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, system-ui, sans-serif; background: #f5f7fa; color: #333; padding: 24px; }
-        .header { margin-bottom: 24px; }
-        .header h1 { font-size: 24px; color: #1a1a2e; }
-        .header p { color: #666; margin-top: 4px; font-size: 14px; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
-        .card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-        .card .label { font-size: 13px; color: #888; }
-        .card .value { font-size: 28px; font-weight: 600; margin-top: 4px; }
-        .card .value.green { color: #22c55e; }
-        .card .value.orange { color: #f59e0b; }
-        .card .value.red { color: #ef4444; }
-        h2 { font-size: 18px; margin-bottom: 12px; }
-        .event-list { list-style: none; }
-        .event-list li { padding: 8px 0; border-bottom: 1px solid #eee; font-size: 14px; }
-        .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; }
-        .badge.L0 { background: #dcfce7; color: #166534; }
-        .badge.L1 { background: #fef9c3; color: #854d0e; }
-        .badge.L2 { background: #fed7aa; color: #9a3412; }
-        .badge.L3 { background: #fecaca; color: #991b1b; }
-        .badge.L4 { background: #fecaca; color: #7f1d1d; font-weight: 700; }
-        .actions { margin-top: 24px; }
-        .btn { padding: 10px 20px; border: none; border-radius: 8px; font-size: 14px; cursor: pointer; }
-        .btn-primary { background: #1a1a2e; color: white; }
-        .btn-primary:hover { background: #16213e; }
-        .footer { margin-top: 32px; color: #aaa; font-size: 12px; }
+        body {
+            font-family: -apple-system, 'Inter', 'Segoe UI', system-ui, sans-serif;
+            background: #f1f5f9;
+            color: #1e293b;
+            min-height: 100vh;
+        }
+        .page { max-width: 1280px; margin: 0 auto; padding: 20px 24px 40px; }
+
+        /* Header */
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+        .header h1 { font-size: 22px; font-weight: 600; color: #0f172a; }
+        .header h1 span { color: #64748b; font-weight: 400; }
+        .header .meta { font-size: 13px; color: #94a3b8; }
+        .header .meta strong { color: #475569; }
+
+        /* Vital Cards Grid */
+        .vitals-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 24px; }
+        .vital-card {
+            background: white; border-radius: 12px; padding: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,.06); border: 1px solid #e2e8f0;
+        }
+        .vital-card .label { font-size: 12px; color: #94a3b8; font-weight: 500; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
+        .vital-card .value { font-size: 26px; font-weight: 700; line-height: 1.2; }
+        .vital-card .sub { font-size: 13px; color: #64748b; margin-top: 2px; }
+        .vital-card .sub .badge { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-left: 4px; }
+        .badge-ok { background: #dcfce7; color: #166534; }
+        .badge-warn { background: #fef3c7; color: #92400e; }
+        .badge-danger { background: #fee2e2; color: #991b1b; }
+        .vital-card .icon { font-size: 18px; margin-bottom: 4px; }
+
+        /* Main Grid */
+        .main-grid { display: grid; grid-template-columns: 1fr 320px; gap: 16px; }
+
+        /* Event List */
+        .section { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,.06); border: 1px solid #e2e8f0; }
+        .section h2 { font-size: 16px; font-weight: 600; margin-bottom: 14px; color: #0f172a; }
+        .event-card {
+            padding: 14px; border-radius: 8px; margin-bottom: 10px;
+            border: 1px solid #e2e8f0; transition: box-shadow .15s;
+        }
+        .event-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+        .event-card:last-child { margin-bottom: 0; }
+        .event-header { display: flex; justify-content: space-between; align-items: flex-start; }
+        .event-type { font-weight: 600; font-size: 14px; }
+        .event-time { font-size: 12px; color: #94a3b8; white-space: nowrap; }
+        .event-body { margin-top: 6px; font-size: 13px; color: #475569; line-height: 1.5; }
+        .event-tags { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; }
+        .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; background: #f1f5f9; color: #475569; }
+        .tag.zscore { background: #e0f2fe; color: #0369a1; }
+        .tag.duration { background: #fef3c7; color: #92400e; }
+        .tag.fusion { background: #ede9fe; color: #5b21b6; }
+        .event-link { display: inline-block; margin-top: 6px; font-size: 12px; color: #2563eb; text-decoration: none; font-weight: 500; }
+        .event-link:hover { text-decoration: underline; }
+        .empty-state { color: #94a3b8; font-size: 14px; padding: 24px 0; text-align: center; }
+
+        /* Sidebar Stats */
+        .stat-block { margin-bottom: 16px; }
+        .stat-block:last-child { margin-bottom: 0; }
+        .stat-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 14px; }
+        .stat-row .label { color: #64748b; }
+        .stat-row .val { font-weight: 600; }
+        .bar-container { height: 8px; background: #f1f5f9; border-radius: 4px; overflow: hidden; margin: 4px 0 2px; }
+        .bar-fill { height: 100%; border-radius: 4px; }
+        .bar-fill.l0 { background: #22c55e; width: 100%; }
+        .bar-fill.l2 { background: #f59e0b; width: 80%; }
+        .bar-fill.l4 { background: #ef4444; width: 100%; }
+        .stat-divider { height: 1px; background: #e2e8f0; margin: 12px 0; }
+
+        /* Actions */
+        .actions { margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap; }
+        .btn {
+            padding: 10px 20px; border: none; border-radius: 8px; font-size: 14px; font-weight: 500;
+            cursor: pointer; transition: all .15s; display: inline-flex; align-items: center; gap: 6px;
+        }
+        .btn-primary { background: #1e293b; color: white; }
+        .btn-primary:hover { background: #0f172a; }
+        .btn-secondary { background: white; color: #475569; border: 1px solid #e2e8f0; }
+        .btn-secondary:hover { background: #f8fafc; border-color: #cbd5e1; }
+
+        /* Event color dot */
+        .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+        .dot.hr { background: #ef4444; }
+        .dot.temp { background: #f97316; }
+        .dot.fall { background: #991b1b; }
+        .dot.rr { background: #8b5cf6; }
+        .dot.conflict { background: #d946ef; }
+        .dot.other { background: #94a3b8; }
+
+        @media (max-width: 768px) {
+            .vitals-grid { grid-template-columns: repeat(2, 1fr); }
+            .main-grid { grid-template-columns: 1fr; }
+            .header { flex-direction: column; align-items: flex-start; gap: 8px; }
+        }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>SuperSenseDoctor — 医生工作站</h1>
-        <p>多模态无接触长期健康追踪系统 · Agent 层</p>
-    </div>
-
-    <div class="grid">
-        <div class="card">
-            <div class="label">数据窗口</div>
-            <div class="value green">{{ total_windows }}</div>
-        </div>
-        <div class="card">
-            <div class="label">待处理事件</div>
-            <div class="value orange">{{ pending_events }}</div>
-        </div>
-        <div class="card">
-            <div class="label">诊断记录</div>
-            <div class="value">{{ total_episodes }}</div>
-        </div>
-        <div class="card">
-            <div class="label">平均心率</div>
-            <div class="value">{{ avg_heart_rate or '--' }}</div>
-        </div>
-    </div>
-
-    <div class="actions">
-        <button class="btn btn-primary" onclick="startReplay()">▶ 启动数据回放</button>
-    </div>
-
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 24px;">
-        <div class="card">
-            <h2>最近诊断记录</h2>
-            <ul class="event-list">
-                {% for ep in recent_episodes %}
-                <li>
-                    <span class="badge {{ ep.decision.get('level', 'L0') }}">{{ ep.decision.get('level', 'L0') }}</span>
-                    {{ ep.decision.get('event_interpretation', ep.decision.get('explanation', '')) }}
-                    <span style="float:right;color:#999;font-size:12px">{{ ep.start_time[:10] }} {{ ep.start_time[11:16] }}</span>
-                </li>
-                {% else %}
-                <li style="color:#999;">暂无诊断记录</li>
-                {% endfor %}
-            </ul>
+    <div class="page">
+        <div class="header">
+            <div>
+                <h1>SuperSenseDoctor <span>— 智慧看护工作站</span></h1>
+                <div class="meta">resident_01 · 数据库: {{ db_path }}</div>
+            </div>
+            <div class="meta">最后更新: <strong id="refresh-time">{{ now().strftime('%H:%M:%S') if now else '' }}</strong></div>
         </div>
 
-        <div class="card">
-            <h2>待处理事件</h2>
-            <ul class="event-list">
-                {% for evt in pending_events_list %}
-                <li>
-                    <strong>{{ evt.event_type }}</strong>
-                    <span style="color:#999;font-size:12px;margin-left:8px">{{ evt.trigger_reason[:40] }}</span>
-                </li>
-                {% else %}
-                <li style="color:#999;">暂无待处理事件</li>
-                {% endfor %}
-            </ul>
+        <!-- Vital Signs Cards -->
+        <div class="vitals-grid" id="vitals-grid">
+            <div class="vital-card" id="card-hr">
+                <div class="icon">❤️</div>
+                <div class="label">心率 HR</div>
+                <div class="value" id="v-hr">--</div>
+                <div class="sub" id="v-hr-sub">bpm</div>
+            </div>
+            <div class="vital-card" id="card-rr">
+                <div class="icon">🫁</div>
+                <div class="label">呼吸率 RR</div>
+                <div class="value" id="v-rr">--</div>
+                <div class="sub" id="v-rr-sub">bpm</div>
+            </div>
+            <div class="vital-card" id="card-temp">
+                <div class="icon">🌡️</div>
+                <div class="label">体温 TEMP</div>
+                <div class="value" id="v-temp">--</div>
+                <div class="sub" id="v-temp-sub">°C</div>
+            </div>
+            <div class="vital-card" id="card-sensor">
+                <div class="icon">📡</div>
+                <div class="label">传感信号</div>
+                <div class="value" id="v-sensor" style="font-size:20px;">--</div>
+                <div class="sub" id="v-sensor-sub">WiFi / mmWave</div>
+            </div>
+            <div class="vital-card" id="card-activity">
+                <div class="icon">⚡</div>
+                <div class="label">活动状态</div>
+                <div class="value" id="v-activity" style="font-size:20px;">--</div>
+                <div class="sub" id="v-activity-sub"></div>
+            </div>
         </div>
-    </div>
 
-    <div class="footer">
-        数据库: {{ db_path }} · 仅用于论文开发测试
+        <!-- Main Content Grid -->
+        <div class="main-grid">
+            <!-- Left: Events -->
+            <div class="section">
+                <h2>最近异常事件</h2>
+                <div id="events-container">
+                    <div class="empty-state">暂无异常事件</div>
+                </div>
+                <div class="actions">
+                    <button class="btn btn-primary" onclick="startReplay()">▶ 启动数据回放</button>
+                </div>
+            </div>
+
+            <!-- Right: Stats -->
+            <div class="section">
+                <h2>本周统计</h2>
+                <div class="stat-block" id="stats-container">
+                    {% for lv in ['L0', 'L1', 'L2', 'L3', 'L4'] %}
+                    <div class="stat-row">
+                        <span class="label">{{ lv }}</span>
+                        <span class="val" id="count-{{ lv }}">0</span>
+                    </div>
+                    {% endfor %}
+                    <div class="stat-divider"></div>
+                    <div class="stat-row"><span class="label">NLOS 遮挡</span><span class="val" id="stat-nlos">0</span></div>
+                    <div class="stat-row"><span class="label">低置信度</span><span class="val" id="stat-lowconf">0</span></div>
+                    <div class="stat-row"><span class="label">模态冲突</span><span class="val" id="stat-conflict">0</span></div>
+                </div>
+                <div style="margin-top:14px;">
+                    <a href="/report" class="btn btn-secondary">📊 查看周报</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer" style="margin-top:24px;color:#94a3b8;font-size:12px;text-align:center;">
+            仅用于论文开发测试 · SuperSenseDoctor v0.1.0
+        </div>
     </div>
 
     <script>
+    // Initial data load from server-rendered data
+    const INIT_WINDOWS = {{ total_windows }};
+    const INIT_PENDING = {{ pending_events }};
+    const INIT_EPISODES = {{ total_episodes }};
+    const INIT_AVG_HR = {{ avg_heart_rate or 'null' }};
+
+    function getEventDot(type) {
+        if (type.startsWith('hr')) return 'dot hr';
+        if (type.startsWith('temp')) return 'dot temp';
+        if (type.startsWith('fall')) return 'dot fall';
+        if (type.startsWith('rr')) return 'dot rr';
+        if (type.startsWith('modality')) return 'dot conflict';
+        return 'dot other';
+    }
+
+    function getEventLevel(ep) {
+        const d = ep.decision || {};
+        return d.level || 'L0';
+    }
+
+    function renderEvents(episodes) {
+        const container = document.getElementById('events-container');
+        if (!episodes || episodes.length === 0) {
+            container.innerHTML = '<div class="empty-state">暂无异常事件</div>';
+            return;
+        }
+        let html = '';
+        episodes.forEach(ep => {
+            const d = ep.decision || {};
+            const level = d.level || 'L0';
+            const interp = d.event_interpretation || d.explanation || '';
+            const ts = ep.start_time ? (ep.start_time.slice(0,10) + ' ' + ep.start_time.slice(11,16)) : '';
+            html += `
+                <div class="event-card">
+                    <div class="event-header">
+                        <div class="event-type"><span class="dot ${getEventDot('hr_abnormal')}"></span>${d.label || level}</div>
+                        <div class="event-time">${ts} <span class="badge badge-${level.replace('L','').replace('0','ok').replace('1','warn').replace('2','warn').replace('3','danger').replace('4','danger')}">${level}</span></div>
+                    </div>
+                    <div class="event-body">${interp || '—'}</div>
+                    <div class="event-tags"></div>
+                    <a class="event-link" href="/episode/${ep.episode_id || ''}">查看完整诊断 →</a>
+                </div>
+            `;
+        });
+        container.innerHTML = html;
+    }
+
+    // Server-rendered episode data
+    renderEvents({{ recent_episodes_json|safe }});
+
     async function startReplay() {
         const btn = event.target;
         btn.disabled = true;
@@ -112,6 +250,31 @@
         btn.disabled = false;
         btn.textContent = '▶ 启动数据回放';
     }
+
+    // Auto-refresh vitals every 5 seconds
+    setInterval(async () => {
+        try {
+            const resp = await fetch('/api/vitals/latest');
+            const data = await resp.json();
+            if (data.status !== 'ok') return;
+
+            document.getElementById('v-hr').textContent = data.heart_rate !== null ? data.heart_rate.toFixed(0) : '--';
+            document.getElementById('v-hr-sub').textContent = data.hr_z_score !== null ? `z_score: ${data.hr_z_score}` : 'bpm';
+
+            document.getElementById('v-rr').textContent = data.respiration_rate !== null ? data.respiration_rate.toFixed(0) : '--';
+
+            document.getElementById('v-temp').textContent = data.body_temp !== null ? data.body_temp.toFixed(1) : '--';
+            document.getElementById('v-temp-sub').textContent = data.temp_z_score !== null ? `z_score: ${data.temp_z_score}` : '°C';
+
+            document.getElementById('v-sensor').textContent = data.wifi_confidence !== null ? data.wifi_confidence.toFixed(2) : '--';
+            document.getElementById('v-sensor-sub').textContent = `WiFi / mmWave: ${data.mmwave_confidence !== null ? data.mmwave_confidence.toFixed(2) : '--'}`;
+
+            document.getElementById('v-activity').textContent = data.activity_state || '--';
+            document.getElementById('v-activity-sub').textContent = data.nlos_flag ? '⚠️ NLOS 遮挡' : (data.fall_status === 'fall' ? '🆘 跌倒' : '正常');
+
+            document.getElementById('refresh-time').textContent = new Date().toLocaleTimeString('zh-CN', {hour12:false});
+        } catch(e) { /* ignore */ }
+    }, 5000);
     </script>
 </body>
 </html>

@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>周报 — SuperSenseDoctor</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, 'Inter', system-ui, sans-serif; background: #f1f5f9; color: #1e293b; }
+        .page { max-width: 800px; margin: 0 auto; padding: 24px; }
+        .back { display: inline-block; margin-bottom: 16px; color: #2563eb; text-decoration: none; font-size: 14px; }
+        .back:hover { text-decoration: underline; }
+        .card { background: white; border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.06); border: 1px solid #e2e8f0; }
+        .card h2 { font-size: 18px; font-weight: 600; margin-bottom: 16px; color: #0f172a; }
+        .header-card h1 { font-size: 22px; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .stat-card { text-align: center; padding: 16px; }
+        .stat-card .num { font-size: 32px; font-weight: 700; }
+        .stat-card .lbl { font-size: 13px; color: #64748b; margin-top: 4px; }
+        .stat-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f1f5f9; font-size: 14px; }
+        .stat-row:last-child { border-bottom: none; }
+        .level-bar { height: 12px; background: #f1f5f9; border-radius: 6px; overflow: hidden; margin: 4px 0 8px; display: flex; }
+        .level-seg { height: 100%; transition: width .3s; }
+        .footer { margin-top: 24px; color: #94a3b8; font-size: 12px; text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <a class="back" href="/">← 返回仪表板</a>
+        <div class="card header-card">
+            <h1>📊 本周报告</h1>
+            <div style="color:#64748b;font-size:14px;margin-top:4px;">resident_01 · {{ total_episodes }} 条诊断记录</div>
+        </div>
+
+        <div class="grid-2">
+            <div class="card stat-card">
+                <div class="num" style="color:#22c55e;">{{ total_episodes }}</div>
+                <div class="lbl">诊断总数</div>
+            </div>
+            <div class="card stat-card">
+                <div class="num" style="font-size:28px;">{% set lvs = [level_counts.L0, level_counts.L1, level_counts.L2, level_counts.L3, level_counts.L4] %}{{ max(lvs) }}</div>
+                <div class="lbl">最高频级别</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>决策级别分布</h2>
+            {% set total = max(total_episodes, 1) %}
+            <div class="level-bar">
+                <div class="level-seg" style="width:{{ (level_counts.L0 / total * 100)|round(1) }}%;background:#22c55e;" title="L0: {{ level_counts.L0 }}"></div>
+                <div class="level-seg" style="width:{{ (level_counts.L1 / total * 100)|round(1) }}%;background:#eab308;" title="L1: {{ level_counts.L1 }}"></div>
+                <div class="level-seg" style="width:{{ (level_counts.L2 / total * 100)|round(1) }}%;background:#f97316;" title="L2: {{ level_counts.L2 }}"></div>
+                <div class="level-seg" style="width:{{ (level_counts.L3 / total * 100)|round(1) }}%;background:#ef4444;" title="L3: {{ level_counts.L3 }}"></div>
+                <div class="level-seg" style="width:{{ (level_counts.L4 / total * 100)|round(1) }}%;background:#991b1b;" title="L4: {{ level_counts.L4 }}"></div>
+            </div>
+            {% for lv in ['L0', 'L1', 'L2', 'L3', 'L4'] %}
+            <div class="stat-row">
+                <span>{{ lv }}</span>
+                <span>{{ level_counts[lv] }} 次</span>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="card">
+            <h2>传感质量</h2>
+            <div class="stat-row"><span>NLOS 遮挡</span><span>{{ nlos_count }} 次</span></div>
+            <div class="stat-row"><span>低置信度</span><span>{{ low_conf_count }} 次</span></div>
+            <div class="stat-row"><span>模态冲突</span><span>{{ conflict_count }} 次</span></div>
+        </div>
+
+        <div class="card">
+            <h2>系统状态</h2>
+            <div class="stat-row"><span>Agent 层版本</span><span>v0.1.0 (Phases A-H)</span></div>
+            <div class="stat-row"><span>数据源</span><span>合成回放 + 团队 CSV</span></div>
+            <div class="stat-row"><span>融合引擎</span><span>FusionEngine (三步链式仲裁)</span></div>
+            <div class="stat-row"><span>基线策略</span><span>Personal Baseline (z_score > 2.0)</span></div>
+        </div>
+
+        <div class="footer">
+            SuperSenseDoctor v0.1.0 — 仅用于论文开发测试
+        </div>
+    </div>
+</body>
+</html>

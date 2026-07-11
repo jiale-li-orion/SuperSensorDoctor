@@ -92,9 +92,9 @@ async def run_demo():
     nurse = NurseAgent(event_bus=bus)
     tools = create_default_tools()
     llm = DeepSeekProvider(
-        api_key="placeholder",  # won't be called for reflex-eligible events
-        model="deepseek/deepseek-chat",
-        base_url="https://api.deepseek.com/v1",
+        api_key=__import__('os').environ.get("DEEPSEEK_API_KEY", "placeholder"),
+        model="deepseek-v4-flash",
+        base_url="https://api.deepseek.com",
     )
     diagnosis = DiagnosisAgent(
         resident_id="resident_01",

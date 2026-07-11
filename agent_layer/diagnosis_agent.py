@@ -261,8 +261,40 @@ class DiagnosisAgent:
                 "safety_boundary": "care_support_only",
             }
 
+        # Extreme HR → L4 (checked before processing event_type-specific rules)
+        if state.heart_rate is not None and state.heart_rate > 150:
+            return {
+                "level": "L4",
+                "label": "emergency",
+                "event_interpretation": f"心率极端异常 (HR={state.heart_rate:.0f})，需要立即干预",
+                "evidence_used": ["nurse_rule:hr_extreme"],
+                "uncertainty": {
+                    "sensing_quality": "reliable",
+                    "missing_evidence": [],
+                    "needs_recheck": True,
+                },
+                "action": {"channel": "emergency", "message": f"心率极端异常 (HR={state.heart_rate:.0f})，需要立即干预", "recheck_after_sec": 60},
+                "safety_boundary": "care_support_only",
+            }
+
         # Critical vital patterns (L3)
         if event.event_type == "rr_bradypnea":
+
+            # Extreme bradypnea → L4
+            if state.respiration_rate is not None and state.respiration_rate < 6:
+                return {
+                    "level": "L4",
+                    "label": "emergency",
+                    "event_interpretation": f"呼吸极端过缓 (RR={state.respiration_rate})，需要立即干预",
+                    "evidence_used": ["nurse_rule:rr_extreme"],
+                    "uncertainty": {
+                        "sensing_quality": "reliable",
+                        "missing_evidence": [],
+                        "needs_recheck": True,
+                    },
+                    "action": {"channel": "emergency", "message": f"呼吸极端过缓 (RR={state.respiration_rate})，需要立即干预", "recheck_after_sec": 60},
+                    "safety_boundary": "care_support_only",
+                }
             return {
                 "level": "L3",
                 "label": "family_notification",
@@ -278,6 +310,22 @@ class DiagnosisAgent:
             }
 
         if event.event_type == "rr_tachypnea":
+
+            # Extreme tachypnea → L4
+            if state.respiration_rate is not None and state.respiration_rate > 40:
+                return {
+                    "level": "L4",
+                    "label": "emergency",
+                    "event_interpretation": f"呼吸极端急促 (RR={state.respiration_rate})，需要立即干预",
+                    "evidence_used": ["nurse_rule:rr_extreme"],
+                    "uncertainty": {
+                        "sensing_quality": "reliable",
+                        "missing_evidence": [],
+                        "needs_recheck": True,
+                    },
+                    "action": {"channel": "emergency", "message": f"呼吸极端急促 (RR={state.respiration_rate})，需要立即干预", "recheck_after_sec": 60},
+                    "safety_boundary": "care_support_only",
+                }
             return {
                 "level": "L3",
                 "label": "family_notification",
@@ -420,4 +468,13 @@ class DiagnosisAgent:
                 "missing_modalities": event.state.missing_modalities,
             },
             "tool_results": tool_results,
+            "context": {
+                "duration_sec": event.context.duration_sec if event.context else 0,
+                "personal_baseline": event.context.personal_baseline if event.context else None,
+                "recent_windows_count": len(event.context.recent_windows) if event.context else 0,
+                "has_recent_windows": bool(event.context.recent_windows) if event.context else False,
+            } if event.context else {
+                "duration_sec": 0, "personal_baseline": None,
+                "recent_windows_count": 0, "has_recent_windows": False,
+            },
         }

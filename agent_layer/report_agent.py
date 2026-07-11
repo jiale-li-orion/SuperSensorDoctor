@@ -37,17 +37,35 @@ class ReportAgent:
 
         # ── 置信度与融合统计 (Phase H) ──
         if events:
-            total_events = len(events)
-            nlos_count = sum(1 for e in events if e.rule_markers.get("nlos_flag") or
-                           e.event_type == "nlos_occlusion")
-            low_conf_count = sum(1 for e in events if e.event_type == "low_confidence")
-            conflict_count = sum(1 for e in events if e.event_type == "modality_conflict")
+            # Helper to read from dict or object (backward compat)
+            def _ev(e, attr, default=None):
+                return e.get(attr, default) if isinstance(e, dict) else getattr(e, attr, default)
 
-            # Average confidence from events that have it
-            wifi_confs = [e.state.wifi_confidence for e in events
-                         if hasattr(e, 'state') and e.state and e.state.wifi_confidence is not None]
-            mmwave_confs = [e.state.mmwave_confidence for e in events
-                           if hasattr(e, 'state') and e.state and e.state.mmwave_confidence is not None]
+            total_events = len(events)
+            nlos_count = sum(1 for e in events if _ev(e, 'rule_markers', {}).get("nlos_flag") or
+                           _ev(e, 'event_type') == "nlos_occlusion")
+            low_conf_count = sum(1 for e in events if _ev(e, 'event_type') == "low_confidence")
+            conflict_count = sum(1 for e in events if _ev(e, 'event_type') == "modality_conflict")
+
+            # Average confidence from events that have it (dict: top-level keys; object: .state attr)
+            def _wifi_conf(e):
+                if isinstance(e, dict):
+                    return e.get("wifi_confidence")
+                if hasattr(e, 'state') and e.state:
+                    return getattr(e.state, 'wifi_confidence', None)
+                return None
+
+            def _mmwave_conf(e):
+                if isinstance(e, dict):
+                    return e.get("mmwave_confidence")
+                if hasattr(e, 'state') and e.state:
+                    return getattr(e.state, 'mmwave_confidence', None)
+                return None
+
+            wifi_confs = [_wifi_conf(e) for e in events]
+            wifi_confs = [c for c in wifi_confs if c is not None]
+            mmwave_confs = [_mmwave_conf(e) for e in events]
+            mmwave_confs = [c for c in mmwave_confs if c is not None]
 
             lines.append(f"\n  传感状态:")
             if nlos_count > 0:

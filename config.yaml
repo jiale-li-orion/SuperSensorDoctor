@@ -1,6 +1,6 @@
 llm:
   provider: deepseek
-  model: deepseek-chat
+  model: deepseek-v4-flash
   api_key: ""           # 通过环境变量 DEEPSEEK_API_KEY 设置
   base_url: "https://api.deepseek.com"
   temperature: 0

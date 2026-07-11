@@ -322,7 +322,7 @@ def consult_fusion_tool(resident_id: str, metric: str) -> dict:
         activity_state=row.get("activity_state", "unknown"),
         posture=row.get("posture"),
         sensor_contact=row.get("sensor_contact"),
-        missing_modalities=eval(row.get("missing_mods", "[]")),  # list from JSON string
+        missing_modalities=json.loads(row.get("missing_mods", "[]")),  # list from JSON string
     )
 
     # Delegate to FusionEngine

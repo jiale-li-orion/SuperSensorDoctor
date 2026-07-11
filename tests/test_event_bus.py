@@ -56,9 +56,9 @@ class TestSubscribe:
 
 
 def test_subscribe_too_many(bus):
-    with pytest.raises(RuntimeError, match="Max 10 subscribers"):
-        for i in range(12):
+    with pytest.raises(RuntimeError, match="Max 30 subscribers"):
+        for i in range(35):
             @bus.subscribe(f"event_{i}")
             def h(event):
                 pass
-    assert len(bus._subscribers) == 10  # should cap at 10
+    assert len(bus._subscribers) == 30  # should cap at 30

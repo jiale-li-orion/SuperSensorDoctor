@@ -8,7 +8,7 @@ from typing import Callable
 class EventBus:
     """轻量事件总线, 支持通配符订阅"""
 
-    def __init__(self, max_subscribers: int = 10):
+    def __init__(self, max_subscribers: int = 30):
         self._subscribers: list[tuple[str, Callable]] = []
         self._max = max_subscribers
 

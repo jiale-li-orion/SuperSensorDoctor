@@ -11,6 +11,7 @@ from agent_layer.confidence import (
 )
 from agent_layer.tiered_action import ActionLevel
 from agent_layer.fusion_engine import FusionEngine
+from storage.db import get_db
 import uuid
 
 
@@ -37,6 +38,7 @@ class NurseAgent:
         self._baseline = self._default_baseline()
         # DurationTracker inline: (event_type, resident_id) -> {"start": ts, "last": ts, "elapsed": float}
         self._durations: dict[tuple[str, str], dict] = {}
+        self.fusion_engine = FusionEngine()
 
     def _default_baseline(self) -> dict:
         return {
@@ -48,6 +50,9 @@ class NurseAgent:
     # ── Duration Tracker ──────────────────────────────────────────────────
     def _update_duration(self, event_type: str, resident_id: str, ts: datetime) -> int:
         """Track elapsed seconds since first consecutive occurrence."""
+        # Strip timezone to avoid naive-aware comparison errors
+        if ts.tzinfo is not None:
+            ts = ts.replace(tzinfo=None)
         key = (event_type, resident_id)
         if key not in self._durations:
             self._durations[key] = {"start": ts, "last": ts, "elapsed": 0.0}
@@ -206,9 +211,8 @@ class NurseAgent:
         # 规则 8: 模态冲突 — WiFi 与 mmWave 估计差异过大
         if state.heart_rate is not None or state.respiration_rate is not None:
             try:
-                engine = FusionEngine()
                 for metric in ["hr", "rr"]:
-                    result = engine.fuse(state, metric)
+                    result = self.fusion_engine.fuse(state, metric)
                     if result.checks.get("consistent") is False:
                         delta_val = result.checks.get("delta", 0)
                         rule_markers[f"{metric}_modality_delta"] = round(delta_val, 1)
@@ -228,6 +232,19 @@ class NurseAgent:
              if k[0] in ("hr_abnormal", "temp_abnormal", "rr_bradypnea", "rr_tachypnea")),
             default=0.0,
         )
+
+        # Query recent sensing windows for context enrichment
+        recent_windows = []
+        try:
+            with get_db() as conn:
+                rows = conn.execute(
+                    "SELECT * FROM sensing_windows WHERE resident_id=? ORDER BY timestamp DESC LIMIT 10",
+                    (self.resident_id,)
+                ).fetchall()
+            recent_windows = [dict(r) for r in rows]
+        except Exception:
+            pass
+
         nurse_context = NurseRuleContext(
             current_state=state,
             personal_baseline={
@@ -237,6 +254,7 @@ class NurseAgent:
                 "temp_z_score": rule_markers.get("temp_z_score"),
             } if rule_markers.get("hr_z_score") or rule_markers.get("temp_z_score") else None,
             duration_sec=int(ctx_duration),
+            recent_windows=recent_windows,
         )
 
         # Publish events with NurseRuleContext attached
