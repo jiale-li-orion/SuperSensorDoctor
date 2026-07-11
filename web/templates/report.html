@@ -38,14 +38,14 @@
                 <div class="lbl">诊断总数</div>
             </div>
             <div class="card stat-card">
-                <div class="num" style="font-size:28px;">{% set lvs = [level_counts.L0, level_counts.L1, level_counts.L2, level_counts.L3, level_counts.L4] %}{{ max(lvs) }}</div>
+                <div class="num" style="font-size:28px;">{% set lvs = [level_counts.L0, level_counts.L1, level_counts.L2, level_counts.L3, level_counts.L4] %}{{ lvs | max }}</div>
                 <div class="lbl">最高频级别</div>
             </div>
         </div>
 
         <div class="card">
             <h2>决策级别分布</h2>
-            {% set total = max(total_episodes, 1) %}
+            {% set total = [total_episodes, 1] | max %}
             <div class="level-bar">
                 <div class="level-seg" style="width:{{ (level_counts.L0 / total * 100)|round(1) }}%;background:#22c55e;" title="L0: {{ level_counts.L0 }}"></div>
                 <div class="level-seg" style="width:{{ (level_counts.L1 / total * 100)|round(1) }}%;background:#eab308;" title="L1: {{ level_counts.L1 }}"></div>
