@@ -15,6 +15,7 @@
             background: #f1f5f9;
             color: #1e293b;
             min-height: 100vh;
+            overflow-x: hidden;
         }
 
         /* ── Colors ── */
@@ -214,6 +215,14 @@
             .topnav-links a { padding: 6px 8px; font-size: 12px; }
             .drawer { width: 100%; right: -100%; }
             .page { padding: 0 12px 24px; }
+            .topnav-info span.resident { display: none; }
+        }
+        @media (max-width: 480px) {
+            .topnav-inner { gap: 8px; }
+            .topnav-brand small { display: none; }
+            .topnav-info { gap: 6px; }
+            .topnav-links a { padding: 4px 6px; font-size: 11px; }
+            .topnav-info span.resident { display: none; }
         }
         @media (prefers-reduced-motion) {
             .drawer { transition: none; }
