@@ -515,6 +515,14 @@ async def api_episode_detail(episode_id: str):
     }
 
 
+@app.get("/episodes", response_class=HTMLResponse)
+async def episodes_page(request: Request):
+    """诊断事件列表页面"""
+    return templates.TemplateResponse("episodes.html", {
+        "request": request,
+    })
+
+
 @app.get("/episode/{episode_id}", response_class=HTMLResponse)
 async def episode_detail_page(request: Request, episode_id: str):
     """诊断详情 HTML 页"""

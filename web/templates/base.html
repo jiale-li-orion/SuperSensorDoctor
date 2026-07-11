@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}SuperSenseDoctor{% endblock %} — 智慧看护工作站</title>
+    <link rel="stylesheet" href="/static/echarts.min.js" as="script">
+    <style>
+        /* ═══════════════════════════════════════════════
+           SuperSenseDoctor Design System v1
+           ═══════════════════════════════════════════════ */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, 'Inter', 'Segoe UI', system-ui, sans-serif;
+            background: #f1f5f9;
+            color: #1e293b;
+            min-height: 100vh;
+        }
+
+        /* ── Colors ── */
+        :root {
+            --bg: #f1f5f9;
+            --surface: #ffffff;
+            --border: #e2e8f0;
+            --text: #1e293b;
+            --text-secondary: #64748b;
+            --text-muted: #94a3b8;
+            --primary: #1e293b;
+            --primary-hover: #0f172a;
+            --accent: #0d9488;          /* teal-600 — status ok */
+            --warn: #d97706;            /* amber-600 */
+            --danger: #dc2626;          /* red-600 */
+            --info: #2563eb;            /* blue-600 */
+            --radius: 8px;
+            --shadow: 0 1px 3px rgba(0,0,0,.06);
+        }
+
+        /* ── Typography ── */
+        h1 { font-size: 20px; font-weight: 600; }
+        h2 { font-size: 16px; font-weight: 600; color: #0f172a; }
+
+        /* ── Layout ── */
+        .page { max-width: 1280px; margin: 0 auto; padding: 0 24px 40px; }
+
+        /* ── Top Navigation ── */
+        .topnav {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 0 24px;
+            position: sticky; top: 0; z-index: 100;
+        }
+        .topnav-inner {
+            max-width: 1280px; margin: 0 auto;
+            display: flex; align-items: center; height: 52px; gap: 24px;
+        }
+        .topnav-brand {
+            font-size: 16px; font-weight: 700; color: var(--primary);
+            text-decoration: none; display: flex; align-items: center; gap: 6px;
+        }
+        .topnav-brand small { font-weight: 400; color: var(--text-muted); font-size: 12px; }
+        .topnav-links { display: flex; gap: 4px; }
+        .topnav-links a {
+            padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 500;
+            color: var(--text-secondary); text-decoration: none; transition: all .12s;
+        }
+        .topnav-links a:hover { background: #f1f5f9; color: var(--text); }
+        .topnav-links a.active { background: var(--primary); color: white; }
+        .topnav-info {
+            margin-left: auto; display: flex; align-items: center; gap: 12px;
+            font-size: 12px; color: var(--text-muted);
+        }
+        .topnav-info .resident { font-weight: 600; color: var(--text-secondary); }
+        .conn-status {
+            display: flex; align-items: center; gap: 4px;
+        }
+        .conn-dot {
+            width: 6px; height: 6px; border-radius: 50%; display: inline-block;
+        }
+        .conn-dot.ok { background: var(--accent); }
+        .conn-dot.warn { background: var(--warn); }
+        .conn-dot.off { background: var(--text-muted); }
+
+        /* ── Buttons ── */
+        .btn {
+            padding: 8px 18px; border: none; border-radius: var(--radius);
+            font-size: 13px; font-weight: 500; cursor: pointer;
+            transition: all .12s; display: inline-flex; align-items: center; gap: 6px;
+            white-space: nowrap; text-decoration: none;
+        }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { background: var(--primary-hover); }
+        .btn-primary:disabled { background: var(--text-muted); cursor: not-allowed; }
+        .btn-secondary { background: white; color: var(--text-secondary); border: 1px solid var(--border); }
+        .btn-secondary:hover { background: #f8fafc; border-color: #cbd5e1; }
+        .btn-secondary:disabled { color: var(--text-muted); border-color: #f1f5f9; cursor: not-allowed; }
+        .btn-ghost { background: transparent; color: var(--text-secondary); }
+        .btn-ghost:hover { background: #f1f5f9; }
+        .btn-sm { padding: 4px 10px; font-size: 12px; }
+        .btn-icon { font-size: 14px; }
+
+        /* ── Cards ── */
+        .card {
+            background: var(--surface); border-radius: var(--radius);
+            box-shadow: var(--shadow); border: 1px solid var(--border);
+        }
+        .card-header {
+            padding: 14px 18px; border-bottom: 1px solid var(--border);
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .card-body { padding: 14px 18px; }
+
+        /* ── Badges ── */
+        .badge { display: inline-block; padding: 1px 7px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+        .badge-ok { background: #dcfce7; color: #166534; }
+        .badge-warn { background: #fef3c7; color: #92400e; }
+        .badge-danger { background: #fee2e2; color: #991b1b; }
+        .badge-info { background: #dbeafe; color: #1d4ed8; }
+        .badge-neutral { background: #f1f5f9; color: #475569; }
+
+        /* ── Tables ── */
+        .table-wrap { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); }
+        th { font-weight: 600; color: var(--text-secondary); font-size: 12px; text-transform: uppercase; letter-spacing: .4px; white-space: nowrap; }
+        tr:hover td { background: #f8fafc; }
+        .table-empty { padding: 32px 0; text-align: center; color: var(--text-muted); }
+
+        /* ── Status indicators ── */
+        .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+        .status-dot.ok { background: #22c55e; }
+        .status-dot.warn { background: var(--warn); }
+        .status-dot.danger { background: var(--danger); }
+        .status-dot.muted { background: var(--text-muted); }
+
+        /* ── Methodology Drawer ── */
+        .drawer-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,.3); z-index: 200;
+            display: none;
+        }
+        .drawer-overlay.open { display: block; }
+        .drawer {
+            position: fixed; top: 0; right: -420px; width: 420px; height: 100%;
+            background: var(--surface); z-index: 201; transition: right .25s ease;
+            overflow-y: auto; box-shadow: -4px 0 20px rgba(0,0,0,.1);
+        }
+        .drawer.open { right: 0; }
+        .drawer-header {
+            padding: 18px 20px; border-bottom: 1px solid var(--border);
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .drawer-header h3 { font-size: 15px; font-weight: 600; }
+        .drawer-body { padding: 16px 20px; font-size: 13px; color: var(--text-secondary); line-height: 1.7; }
+        .drawer-body h4 { font-size: 13px; font-weight: 600; color: var(--text); margin: 16px 0 6px; }
+        .drawer-body h4:first-child { margin-top: 0; }
+        .drawer-body .source-tag { display: inline-block; padding: 0 5px; border-radius: 3px; font-size: 11px; font-weight: 600; background: #f1f5f9; font-family: monospace; }
+        .drawer-close { background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text-muted); padding: 4px; }
+
+        /* ── Tooltips ── */
+        [data-tooltip] { position: relative; cursor: help; }
+        [data-tooltip]:hover::after {
+            content: attr(data-tooltip); position: absolute; bottom: calc(100% + 6px);
+            left: 50%; transform: translateX(-50%); background: var(--primary);
+            color: white; padding: 5px 10px; border-radius: 4px; font-size: 12px;
+            white-space: nowrap; z-index: 50; pointer-events: none;
+        }
+
+        /* ── Grid helpers ── */
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .grid-3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; }
+        .flex { display: flex; align-items: center; gap: 8px; }
+        .flex-wrap { flex-wrap: wrap; }
+        .gap-4 { gap: 4px; }
+        .ml-auto { margin-left: auto; }
+        .mt-8 { margin-top: 8px; }
+        .mt-12 { margin-top: 12px; }
+        .mt-16 { margin-top: 16px; }
+        .mb-8 { margin-bottom: 8px; }
+        .mb-16 { margin-bottom: 16px; }
+        .text-muted { color: var(--text-muted); }
+        .text-sm { font-size: 13px; }
+        .text-xs { font-size: 12px; }
+        .fw-600 { font-weight: 600; }
+
+        /* ── Progress ── */
+        .progress-bar { height: 6px; background: #f1f5f9; border-radius: 3px; overflow: hidden; }
+        .progress-fill { height: 100%; border-radius: 3px; transition: width .4s ease; }
+
+        /* ── Empty state ── */
+        .empty-state {
+            text-align: center; padding: 48px 24px; color: var(--text-muted);
+        }
+        .empty-state h3 { font-size: 18px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
+        .empty-state p { font-size: 14px; line-height: 1.6; margin-bottom: 20px; }
+
+        /* ── Filters ── */
+        .filter-bar {
+            display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+        }
+        .filter-bar select, .filter-bar input {
+            padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px;
+            font-size: 13px; background: white; color: var(--text);
+        }
+        .filter-bar select:focus, .filter-bar input:focus {
+            outline: none; border-color: var(--primary);
+        }
+
+        /* ── Responsive ── */
+        @media (max-width: 1024px) {
+            .grid-2 { grid-template-columns: 1fr; }
+            .grid-3 { grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 768px) {
+            .grid-3 { grid-template-columns: 1fr; }
+            .topnav-links a { padding: 6px 8px; font-size: 12px; }
+            .drawer { width: 100%; right: -100%; }
+            .page { padding: 0 12px 24px; }
+        }
+        @media (prefers-reduced-motion) {
+            .drawer { transition: none; }
+            * { animation-duration: 0s !important; }
+        }
+    </style>
+    {% block head_extra %}{% endblock %}
+</head>
+<body>
+    <!-- ═══ Top Navigation ═══ -->
+    <nav class="topnav">
+        <div class="topnav-inner">
+            <a href="/" class="topnav-brand">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                SuperSenseDoctor <small>v0.1</small>
+            </a>
+            <div class="topnav-links">
+                <a href="/" class="{% if request.url.path == '/' %}active{% endif %}" id="nav-dash">
+                    <i data-lucide="gauge" style="width:14px;height:14px;"></i> 实时概览
+                </a>
+                <a href="/episodes" class="{% if request.url.path == '/episodes' %}active{% endif %}" id="nav-episodes">
+                    <i data-lucide="list" style="width:14px;height:14px;"></i> 诊断事件
+                </a>
+                <a href="/report" class="{% if request.url.path == '/report' %}active{% endif %}" id="nav-report">
+                    <i data-lucide="file-text" style="width:14px;height:14px;"></i> 周报洞察
+                </a>
+            </div>
+            <div class="topnav-info">
+                <span class="resident"><i data-lucide="user" style="width:12px;height:12px;"></i> resident_01</span>
+                <span class="conn-status" id="conn-status">
+                    <span class="conn-dot ok" id="conn-dot"></span>
+                    <span id="conn-label">在线</span>
+                </span>
+                <span id="nav-last-update"></span>
+                <button class="btn btn-ghost btn-sm" onclick="toggleDrawer()" data-tooltip="系统方法与边界">
+                    <i data-lucide="book-open" style="width:14px;height:14px;"></i>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- ═══ Page Content ═══ -->
+    <div class="page">
+        {% block content %}{% endblock %}
+    </div>
+
+    <!-- ═══ Methodology Drawer ═══ -->
+    <div class="drawer-overlay" id="drawer-overlay" onclick="toggleDrawer()"></div>
+    <div class="drawer" id="drawer">
+        <div class="drawer-header">
+            <h3>方法与边界</h3>
+            <button class="drawer-close" onclick="toggleDrawer()">✕</button>
+        </div>
+        <div class="drawer-body">
+            <h4>系统架构</h4>
+            <p>Sensing → StateObject → NurseAgent(规则) → DiagnosisAgent(LLM) → TriageDecision → EpisodeLog</p>
+
+            <h4>各模态职责</h4>
+            <p><span class="source-tag">WiFi</span> CSI-based 呼吸/心率估计，受 NLOS 影响较小</p>
+            <p><span class="source-tag">mmWave</span> 毫米波雷达，跌倒检测 + 生命体征，NLOS 下降级</p>
+            <p><span class="source-tag">Thermal</span> 红外体温</p>
+
+            <h4>Agent 分工</h4>
+            <p><strong>NurseAgent</strong> — 规则引擎。8 条硬规则：跌倒、HR/RR/体温异常（z-score 优先）、低置信度、NLOS、模态冲突、RR 基线偏离。</p>
+            <p><strong>FusionEngine</strong> — 三步链：每模态置信度 → 跨模态一致性 → 仲裁输出。portable_v2 数据存在时使用真实每模态估计值。</p>
+            <p><strong>DiagnosisAgent</strong> — LLM 分级。反射弧(path)处理 L4 紧急事件，ReAct 循环处理其余事件。</p>
+
+            <h4>引用来源</h4>
+            <p><span class="source-tag">RCP_NEWS2_2017_REFERENCE</span> HR/RR/Temperature 绝对偏离参考区间。注意：当前系统缺乏 SpO₂、收缩压和意识评估参数，<strong>不计算完整 NEWS2 评分</strong>。</p>
+            <p><span class="source-tag">NICE_NG249_2025</span> 跌倒评估证据需求。系统通常不知道 injury、意识丧失、能否独自起身、反复跌倒历史。</p>
+            <p><span class="source-tag">RESIDENT_HISTORY</span> 个人纵向基线数据，统计偏离证据不等于疾病诊断。</p>
+            <p><span class="source-tag">SENSOR_FUSION</span> 测量可靠性证据，不是疾病证据。</p>
+            <p><span class="source-tag">PROJECT_POLICY</span> 项目特有的 z-score 阈值、5–10 分钟复查策略、L0-L4 映射。</p>
+
+            <h4>安全边界</h4>
+            <p>本系统提供 care support，不构成医学诊断、治疗建议或用药建议。L0-L4 分级为项目策略，不应用于独立临床决策。</p>
+        </div>
+    </div>
+
+    <!-- ═══ Scripts ═══ -->
+    <script src="/static/lucide.min.js"></script>
+    <script src="/static/echarts.min.js"></script>
+    <script>
+        // Init Lucide icons
+        lucide.createIcons();
+
+        // Drawer toggle
+        function toggleDrawer() {
+            document.getElementById('drawer').classList.toggle('open');
+            document.getElementById('drawer-overlay').classList.toggle('open');
+        }
+
+        // Update connection status
+        async function pollConnection() {
+            try {
+                const r = await fetch('/api/health');
+                const d = await r.json();
+                const dot = document.getElementById('conn-dot');
+                const label = document.getElementById('conn-label');
+                if (d.status === 'ok') {
+                    dot.className = 'conn-dot ok';
+                    label.textContent = '在线';
+                } else {
+                    dot.className = 'conn-dot warn';
+                    label.textContent = '异常';
+                }
+            } catch {
+                document.getElementById('conn-dot').className = 'conn-dot off';
+                document.getElementById('conn-label').textContent = '离线';
+            }
+        }
+
+        // Update timestamp
+        function updateTimestamp() {
+            const el = document.getElementById('nav-last-update');
+            if (el) el.textContent = new Date().toLocaleTimeString('zh-CN', {hour12:false});
+        }
+        setInterval(pollConnection, 10000);
+        setInterval(updateTimestamp, 30000);
+        updateTimestamp();
+        pollConnection();
+
+        // Z-score helpers (available to all templates)
+        function zColor(z) {
+            if (z === null || z === undefined) return '#94a3b8';
+            const a = Math.abs(z);
+            if (a < 1.0) return '#16a34a';
+            if (a < 2.0) return '#d97706';
+            return '#dc2626';
+        }
+        function zBadge(z) {
+            if (z === null || z === undefined) return '';
+            const sign = z > 0 ? '+' : '';
+            return `<span class="badge ${zColor(z) === '#16a34a' ? 'badge-ok' : zColor(z) === '#d97706' ? 'badge-warn' : 'badge-danger'}">z=${sign}${z.toFixed(1)}</span>`;
+        }
+        function pct(v) {
+            if (v === null || v === undefined) return '--';
+            return (v * 100).toFixed(0) + '%';
+        }
+        function pctW(v) {
+            if (v === null || v === undefined) return '0%';
+            return Math.round(v * 100) + '%';
+        }
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
