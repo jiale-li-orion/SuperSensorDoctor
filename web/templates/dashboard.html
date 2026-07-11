@@ -52,11 +52,6 @@
 </style>
 {% endblock %}
 {% block content %}
-<script>
-    const INIT_PV_LOADING = {{ 'true' if pv_loading else 'false' }};
-    const INIT_PV_COUNT = {{ pv_count }};
-</script>
-
 <!-- Data Loading Controls -->
 <div class="data-bar mb-16" id="data-bar">
     <div>
@@ -247,10 +242,6 @@
         </div>
 
     <script>
-    // Initial data load from server-rendered data
-    const INIT_PV_LOADING = {{ 'true' if pv_loading else 'false' }};
-    const INIT_PV_COUNT = {{ pv_count }};
-
     // ── Z-score color helper ──
     function zScoreColor(z) {
         if (z === null || z === undefined) return '#94a3b8';
