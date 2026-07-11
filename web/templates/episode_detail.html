@@ -1,182 +1,291 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>诊断详情 — SuperSenseDoctor</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, 'Inter', system-ui, sans-serif; background: #f1f5f9; color: #1e293b; }
-        .page { max-width: 900px; margin: 0 auto; padding: 24px; }
-        .back { display: inline-block; margin-bottom: 16px; color: #2563eb; text-decoration: none; font-size: 14px; font-weight: 500; }
-        .back:hover { text-decoration: underline; }
-        .card { background: white; border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.06); border: 1px solid #e2e8f0; }
-        .card h2 { font-size: 16px; font-weight: 600; margin-bottom: 12px; color: #0f172a; }
-        .header-card { display: flex; justify-content: space-between; align-items: center; }
-        .header-card h1 { font-size: 20px; font-weight: 600; }
-        .badge { display: inline-block; padding: 4px 12px; border-radius: 6px; font-size: 14px; font-weight: 600; }
-        .badge.L0 { background: #dcfce7; color: #166534; }
-        .badge.L1 { background: #fef9c3; color: #854d0e; }
-        .badge.L2 { background: #fed7aa; color: #9a3412; }
-        .badge.L3 { background: #fecaca; color: #991b1b; }
-        .badge.L4 { background: #fecaca; color: #7f1d1d; }
-        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-        .info-item { padding: 8px 0; }
-        .info-item .label { font-size: 12px; color: #94a3b8; text-transform: uppercase; letter-spacing: .5px; }
-        .info-item .val { font-size: 16px; font-weight: 600; margin-top: 2px; }
-        .info-item .val small { font-weight: 400; color: #64748b; font-size: 13px; }
-        .value-group { display: flex; gap: 24px; flex-wrap: wrap; }
-        .value-item { text-align: center; }
-        .value-item .num { font-size: 24px; font-weight: 700; }
-        .value-item .lbl { font-size: 12px; color: #94a3b8; margin-top: 2px; }
-        .value-item .extra { font-size: 12px; color: #64748b; }
-        .sep { border: none; border-top: 1px solid #e2e8f0; margin: 16px 0; }
-        .chain-step { padding: 10px 0; border-bottom: 1px solid #f1f5f9; font-size: 14px; }
-        .chain-step:last-child { border-bottom: none; }
-        .chain-step .num { display: inline-block; width: 24px; height: 24px; line-height: 24px; text-align: center; background: #e0f2fe; color: #0369a1; border-radius: 50%; font-size: 12px; font-weight: 600; margin-right: 8px; }
-        .tool-result { margin: 6px 0 6px 32px; font-size: 13px; color: #64748b; white-space: pre-wrap; max-height: 100px; overflow-y: auto; }
-        .footer { margin-top: 24px; color: #94a3b8; font-size: 12px; text-align: center; }
-    </style>
-</head>
-<body>
-    <div class="page">
-        <a class="back" href="/">← 返回仪表板</a>
+{% extends "base.html" %}
+{% block title %}诊断详情{% endblock %}
+{% block head_extra %}
+<style>
+    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .info-item { padding: 8px 0; }
+    .info-item .label { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; }
+    .info-item .val { font-size: 16px; font-weight: 600; margin-top: 2px; }
+    .info-item .val small { font-weight: 400; color: var(--text-secondary); font-size: 13px; }
+    .value-group { display: flex; gap: 24px; flex-wrap: wrap; }
+    .value-item { text-align: center; min-width: 60px; }
+    .value-item .num { font-size: 24px; font-weight: 700; }
+    .value-item .lbl { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+    .value-item .extra { font-size: 12px; color: var(--text-secondary); }
+    .chain-step { padding: 8px 0; border-bottom: 1px solid #f1f5f9; font-size: 14px; }
+    .chain-step:last-child { border-bottom: none; }
+    .chain-step .step-num { display: inline-flex; width: 22px; height: 22px; align-items: center; justify-content: center; background: #e0f2fe; color: #0369a1; border-radius: 50%; font-size: 11px; font-weight: 600; margin-right: 8px; flex-shrink: 0; }
+    .evidence-section { border-left: 2px solid var(--border); margin: 8px 0 8px 12px; padding-left: 14px; }
+    .basis-item { padding: 6px 0; border-bottom: 1px solid #f8fafc; font-size: 13px; }
+    .basis-item:last-child { border-bottom: none; }
+    .source-tag-sm { display: inline-block; padding: 0 5px; border-radius: 3px; font-size: 10px; font-weight: 600; background: #f1f5f9; font-family: monospace; margin-right: 4px; }
+    .pm-row { display: flex; gap: 16px; margin-top: 6px; flex-wrap: wrap; }
+    .pm-col { flex: 1; min-width: 120px; padding: 8px; border-radius: 6px; background: #f8fafc; }
+    .pm-col .h { font-size: 11px; color: var(--text-muted); font-weight: 600; margin-bottom: 2px; }
+    .pm-col .v { font-size: 16px; font-weight: 700; }
+    .sep { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+    .json-collapse { margin-top: 8px; }
+    .json-collapse summary { font-size: 12px; color: var(--text-secondary); cursor: pointer; }
+    .json-collapse pre { font-size: 11px; max-height: 200px; overflow: auto; background: #f8fafc; padding: 8px; border-radius: 4px; margin-top: 4px; }
+    @media print { .no-print { display: none; } }
+</style>
+{% endblock %}
+{% block content %}
+<div class="flex flex-wrap mb-16">
+    <a href="/episodes" class="btn btn-ghost btn-sm">← 返回事件列表</a>
+    <span class="ml-auto" style="font-size:13px;color:var(--text-muted);">Episode: {{ episode.episode_id }}</span>
+</div>
 
-        <div class="card header-card">
-            <div>
-                <h1>诊断详情</h1>
-                <div style="color:#64748b;font-size:14px;margin-top:4px;">{{ episode.episode_id }}</div>
-            </div>
-            <div>
-                {% set lv = episode.decision.get('level', 'L0') or 'L0' %}
-                <span class="badge {{ lv }}">{{ lv }}</span>
-                <div style="text-align:right;margin-top:4px;font-size:13px;color:#64748b;">{{ episode.decision.get('label', '') }}</div>
+<!-- Header -->
+<div class="card mb-16">
+    <div class="flex flex-wrap" style="justify-content:space-between;">
+        <div>
+            <h1>诊断详情</h1>
+            <div class="text-muted text-sm mt-8">
+                {% set et = health_event.event_type if health_event else episode.episode_id %}
+                {{ et }} · {{ episode.start_time[:19] if episode.start_time else '—' }}
             </div>
         </div>
-
-        <div class="card">
-            <h2>事件信息</h2>
-            <div class="info-grid">
-                <div class="info-item">
-                    <div class="label">事件类型</div>
-                    <div class="val">{{ health_event.event_type if health_event else episode.episode_id }}</div>
-                </div>
-                <div class="info-item">
-                    <div class="label">触发原因</div>
-                    <div class="val"><small>{{ (health_event.trigger_reason if health_event else '')[:80] }}</small></div>
-                </div>
-                <div class="info-item">
-                    <div class="label">发生时间</div>
-                    <div class="val"><small>{{ episode.start_time or '—' }}</small></div>
-                </div>
-                <div class="info-item">
-                    <div class="label">处理时间</div>
-                    <div class="val"><small>{{ episode.end_time or '—' }}</small></div>
-                </div>
-            </div>
-        </div>
-
-        <div class="card">
-            <h2>体征快照 · 基线 · 融合裁决</h2>
-            {% set sensing = episode.evidence.get('sensing_summary', {}) %}
-            <div class="value-group">
-                <div class="value-item">
-                    <div class="num" style="color:#dc2626;">{{ sensing.get('heart_rate', '—') }}</div>
-                    <div class="lbl">HR (bpm)</div>
-                    <div class="extra">{{ (health_event.rule_markers.get('hr_z_score', '') if health_event else '') and ('z=' ~ health_event.rule_markers.hr_z_score) or '' }}</div>
-                </div>
-                <div class="value-item">
-                    <div class="num" style="color:#8b5cf6;">{{ sensing.get('respiration_rate', '—') }}</div>
-                    <div class="lbl">RR (bpm)</div>
-                </div>
-                <div class="value-item">
-                    <div class="num" style="color:#f97316;">{{ sensing.get('body_temp', '—') }}</div>
-                    <div class="lbl">Temp (°C)</div>
-                </div>
-                <div class="value-item">
-                    <div class="num" style="font-size:18px;">{{ sensing.get('wifi_confidence', '—') }}</div>
-                    <div class="lbl">WiFi 置信度</div>
-                </div>
-                <div class="value-item">
-                    <div class="num" style="font-size:18px;">{{ sensing.get('mmwave_confidence', '—') }}</div>
-                    <div class="lbl">mmWave 置信度</div>
-                </div>
-            </div>
-            <hr class="sep">
-            {% set markers = health_event.rule_markers if health_event else {} %}
-            {% if markers %}
-            <div style="font-size:13px;color:#475569;line-height:1.8;">
-                {% if markers.hr_z_score %}z_score: {{ markers.hr_z_score }} (阈值: 2.0){% endif %}
-                {% if markers.duration_sec %} · 持续: {{ markers.duration_sec }}s{% endif %}
-                {% if markers.hr_deviation %} · 偏差: {{ markers.hr_deviation }} bpm{% endif %}
-                {% if markers.hr_modality_delta %} · 模态差异: {{ markers.hr_modality_delta }} (信任: {{ markers.hr_dominant }}){% endif %}
-            </div>
-            {% endif %}
-        </div>
-
-        <div class="card">
-            <h2>证据链</h2>
-            {% set evidence_list = episode.evidence.get('tool_results', []) %}
-            {% if evidence_list %}
-                {% for tr in evidence_list %}
-                <div class="chain-step">
-                    <span class="num">{{ loop.index }}</span>
-                    <strong>{{ tr.get('tool', tr.get('name', 'tool')) }}</strong>
-                    <div class="tool-result">{{ tr.get('result', {}).get('status', '') }} — {{ tr.get('result', {}) }}</div>
-                </div>
-                {% endfor %}
-            {% else %}
-                <div class="chain-step"><span class="num">1</span> <strong>Reflex Arc</strong> — 快速反射路径</div>
-            {% endif %}
-        </div>
-
-        <div class="card">
-            <h2>决策详情</h2>
-            <div class="info-grid">
-                <div class="info-item">
-                    <div class="label">解释</div>
-                    <div class="val"><small>{{ episode.decision.get('event_interpretation', '') }}</small></div>
-                </div>
-                <div class="info-item">
-                    <div class="label">行动</div>
-                    <div class="val">{{ episode.action.get('channel', '—') }}</div>
-                </div>
-                <div class="info-item">
-                    <div class="label">复查间隔</div>
-                    <div class="val">{{ episode.action.get('recheck_after_sec', episode.action.get('recheck_after', '—')) }}s</div>
-                </div>
-                <div class="info-item">
-                    <div class="label">不确定度</div>
-                    <div class="val"><small>{{ episode.decision.get('uncertainty', {}) }}</small></div>
-                </div>
-                <div class="info-item">
-                    <div class="label">安全边界</div>
-                    <div class="val">{{ episode.decision.get('safety_boundary', 'care_support_only') }}</div>
-                </div>
-            </div>
-        </div>
-
-        <div class="card">
-            <h2>审计</h2>
-            <div class="info-grid">
-                <div class="info-item">
-                    <div class="label">工具调用</div>
-                    <div class="val"><small>{{ episode.audit.get('tools_called', []) }}</small></div>
-                </div>
-                <div class="info-item">
-                    <div class="label">步骤数</div>
-                    <div class="val">{{ episode.audit.get('step_count', 0) }}</div>
-                </div>
-                <div class="info-item">
-                    <div class="label">走向</div>
-                    <div class="val">{{ '反射弧' if episode.audit.get('reflex') else ('LLM ReAct (' ~ episode.audit.get('step_count', '?') ~ ' steps)') }}</div>
-                </div>
-            </div>
-        </div>
-
-        <div class="footer">
-            SuperSenseDoctor v0.1.0 — 仅用于论文开发测试
+        <div style="text-align:right;">
+            {% set lv = episode.decision.get('level', 'L0') or 'L0' %}
+            <span class="badge {{ 'badge-'+('ok' if lv=='L0' else 'warn' if lv in ('L1','L2') else 'danger') }}">{{ lv }}</span>
+            <div class="text-muted text-sm mt-8">{{ episode.decision.get('label', '') }}</div>
         </div>
     </div>
-</body>
-</html>
+</div>
+
+<!-- Clinical Basis (NEW) -->
+{% set clinical_basis = episode.decision.get('clinical_basis', []) %}
+{% if clinical_basis %}
+<div class="card mb-16">
+    <div class="card-header"><h2>临床依据</h2></div>
+    <div class="card-body">
+        {% for item in clinical_basis %}
+        <div class="basis-item">
+            <span class="source-tag-sm">{{ item.source }}</span>
+            <span class="fw-600">{{ item.type }}</span>: {{ item.finding }}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Event info + decision -->
+<div class="grid-2 mb-16">
+    <div class="card">
+        <div class="card-header"><h2>事件信息</h2></div>
+        <div class="card-body">
+            <div class="info-item">
+                <div class="label">触发原因</div>
+                <div class="val"><small>{{ health_event.trigger_reason if health_event else '—' }}</small></div>
+            </div>
+            <div class="info-item">
+                <div class="label">规则标记</div>
+                <div class="val">
+                    {% set markers = health_event.rule_markers if health_event else {} %}
+                    {% if markers.hr_z_score %}z= {{ markers.hr_z_score }}{% endif %}
+                    {% if markers.duration_sec %} · {{ markers.duration_sec }}s{% endif %}
+                    {% if markers.hr_modality_delta %} · δ={{ markers.hr_modality_delta }}{% endif %}
+                </div>
+            </div>
+            <div class="info-item">
+                <div class="label">行动</div>
+                <div class="val">{{ episode.action.get('channel', '—') }} <small>复查 {{ episode.action.get('recheck_after_sec', episode.action.get('recheck_after', '—')) }}s</small></div>
+            </div>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-header"><h2>事件解释</h2></div>
+        <div class="card-body">
+            <p style="font-size:14px;line-height:1.6;color:var(--text-secondary);">{{ episode.decision.get('event_interpretation', '') }}</p>
+            {% set uncertainty = episode.decision.get('uncertainty', {}) %}
+            {% if uncertainty.get('missing_evidence') %}
+            <div class="mt-8 text-sm text-muted">
+                <strong>缺失证据:</strong> {{ uncertainty.missing_evidence | join(', ') }}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Per-modality sensing (NEW) -->
+{% set sensing = episode.evidence.get('sensing_summary', {}) %}
+{% if sensing.get('hr_wifi') is not none or sensing.get('rr_wifi') is not none %}
+<div class="card mb-16">
+    <div class="card-header"><h2>每模态传感数据</h2></div>
+    <div class="card-body">
+        <div class="pm-row">
+            <div class="pm-col">
+                <div class="h">❤️ HR</div>
+                <div class="v" style="color:#dc2626;">{{ sensing.get('heart_rate', '—') }}</div>
+                <div class="text-sm text-muted">融合值</div>
+                <div class="text-xs text-muted mt-8">WiFi: {{ sensing.get('hr_wifi', '—') }} · mmWave: {{ sensing.get('hr_mm', '—') }}</div>
+                <div class="text-xs text-muted">HR conf: {{ sensing.get('hr_conf', '—') }} · 源: {{ sensing.get('hr_source', '—') }}</div>
+            </div>
+            <div class="pm-col">
+                <div class="h">🫁 RR</div>
+                <div class="v" style="color:#8b5cf6;">{{ sensing.get('respiration_rate', '—') }}</div>
+                <div class="text-sm text-muted">融合值</div>
+                <div class="text-xs text-muted mt-8">WiFi: {{ sensing.get('rr_wifi', '—') }} · mmWave: {{ sensing.get('rr_mm', '—') }}</div>
+                <div class="text-xs text-muted">RR conf: {{ sensing.get('rr_conf', '—') }} · 源: {{ sensing.get('rr_source', '—') }}</div>
+            </div>
+            <div class="pm-col">
+                <div class="h">🌡️ TEMP</div>
+                <div class="v" style="color:#f97316;">{{ sensing.get('body_temp', '—') }}</div>
+                <div class="text-sm text-muted">红外</div>
+                <div class="text-xs text-muted mt-8">Thermal conf: {{ sensing.get('thermal_confidence', '—') }}</div>
+            </div>
+            <div class="pm-col">
+                <div class="h">📡 置信度</div>
+                <div class="v" style="font-size:18px;">{{ sensing.get('wifi_confidence', '—') }}</div>
+                <div class="text-sm text-muted">WiFi</div>
+                <div class="text-xs text-muted mt-8">mmWave: {{ sensing.get('mmwave_confidence', '—') }}</div>
+                {% if sensing.get('nlos_flag') %}<div class="text-xs" style="color:var(--warn);">⚠ NLOS</div>{% endif %}
+                {% if sensing.get('quality_event') %}<div class="text-xs" style="color:var(--warn);">⚠ 质量事件</div>{% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
+<!-- Fallback: basic vitals -->
+<div class="card mb-16">
+    <div class="card-header"><h2>体征快照</h2></div>
+    <div class="card-body">
+        <div class="value-group">
+            <div class="value-item">
+                <div class="num" style="color:#dc2626;">{{ sensing.get('heart_rate', '—') }}</div>
+                <div class="lbl">HR (bpm)</div>
+            </div>
+            <div class="value-item">
+                <div class="num" style="color:#8b5cf6;">{{ sensing.get('respiration_rate', '—') }}</div>
+                <div class="lbl">RR (bpm)</div>
+            </div>
+            <div class="value-item">
+                <div class="num" style="color:#f97316;">{{ sensing.get('body_temp', '—') }}</div>
+                <div class="lbl">Temp (°C)</div>
+            </div>
+            <div class="value-item">
+                <div class="num" style="font-size:18px;">{{ sensing.get('wifi_confidence', '—') }}</div>
+                <div class="lbl">WiFi</div>
+            </div>
+            <div class="value-item">
+                <div class="num" style="font-size:18px;">{{ sensing.get('mmwave_confidence', '—') }}</div>
+                <div class="lbl">mmWave</div>
+            </div>
+        </div>
+        {% if sensing.get('nlos_flag') %}<div class="mt-8 text-sm" style="color:var(--warn);">⚠ NLOS 遮挡中</div>{% endif %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Clinical Summary from evidence (NEW) -->
+{% set clin = episode.evidence.get('clinical_summary', {}) %}
+{% set abs_ref = clin.get('absolute_reference', {}) %}
+{% if abs_ref %}
+<div class="card mb-16">
+    <div class="card-header"><h2>临床参考</h2></div>
+    <div class="card-body">
+        <div class="flex flex-wrap" style="gap:8px;">
+            {% for metric, result in {'hr':abs_ref.get('heart_rate',{}), 'rr':abs_ref.get('respiration_rate',{}), 'temp':abs_ref.get('body_temp',{})}.items() if result.get('status') == 'ok' %}
+            <div class="pm-col" style="min-width:100px;">
+                <div class="h">{{ {'hr':'HR','rr':'RR','temp':'TEMP'}[metric] }}</div>
+                <div class="v" style="font-size:14px;">{{ result.value }}</div>
+                <div class="text-xs text-muted">{{ result.band }} (score {{ result.reference_score }})</div>
+            </div>
+            {% endfor %}
+        </div>
+        <div class="text-xs text-muted mt-8">
+            <span class="source-tag-sm">RCP_NEWS2_2017_REFERENCE</span>
+            参考区间仅表示绝对偏离，不构成完整 NEWS2 评分。
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Context: personal baseline + persistence -->
+{% set ctx = episode.evidence.get('context', {}) %}
+{% set pb = ctx.get('personal_baseline', {}) %}
+{% if pb %}
+<div class="card mb-16">
+    <div class="card-header"><h2>个人上下文</h2></div>
+    <div class="card-body">
+        {% for metric, bl in pb.items() if bl is mapping %}
+        <div class="basis-item">
+            <span class="source-tag-sm">RESIDENT_HISTORY</span>
+            <strong>{{ {'hr':'HR','rr':'RR','temp':'TEMP'}.get(metric, metric) }}</strong>:
+            当前 {{ bl.value }}, 基线 {{ bl.mean }}±{{ bl.std }}, z={{ "%.2f"|format(bl.z_score) }}
+        </div>
+        {% endfor %}
+        {% if ctx.get('duration_sec') %}
+        <div class="basis-item">
+            <span class="source-tag-sm">PROJECT_POLICY</span>
+            <strong>持续性</strong>: {{ ctx.duration_sec }}s{% if ctx.duration_sec >= 300 %} (≥5min, 持续){% endif %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Evidence chain -->
+<div class="card mb-16">
+    <div class="card-header"><h2>证据链</h2></div>
+    <div class="card-body">
+        {% set evidence_list = episode.evidence.get('tool_results', []) %}
+        {% if evidence_list %}
+            {% for tr in evidence_list %}
+            <div class="chain-step flex">
+                <span class="step-num">{{ loop.index }}</span>
+                <div>
+                    <strong>{{ tr.get('tool', tr.get('name', 'tool')) }}</strong>
+                    <div class="evidence-section text-sm text-muted">
+                        {{ tr.get('result', {}).get('status', '') }}
+                    </div>
+                    <details class="json-collapse">
+                        <summary>查看原始结果</summary>
+                        <pre>{{ tr.get('result', {}) | tojson(indent=2) if tr.get('result') is mapping else tr.get('result', '') }}</pre>
+                    </details>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="chain-step flex">
+                <span class="step-num">⚡</span>
+                <div><strong>Reflex Arc</strong> — 快速反射路径，未调用 LLM 工具</div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Audit -->
+<div class="card mb-16">
+    <div class="card-header"><h2>审计</h2></div>
+    <div class="card-body">
+        <div class="grid-2">
+            <div class="info-item">
+                <div class="label">调用工具</div>
+                <div class="val"><small>{{ episode.audit.get('tools_called', []) | join(', ') }}</small></div>
+            </div>
+            <div class="info-item">
+                <div class="label">步骤数</div>
+                <div class="val">{{ episode.audit.get('step_count', 0) }}</div>
+            </div>
+            <div class="info-item">
+                <div class="label">路径</div>
+                <div class="val">{{ '⚡ 反射弧' if episode.audit.get('reflex') else '🧠 LLM ReAct' }}</div>
+            </div>
+            <div class="info-item">
+                <div class="label">安全边界</div>
+                <div class="val">{{ episode.decision.get('safety_boundary', 'care_support_only') }}</div>
+            </div>
+        </div>
+        <details class="json-collapse">
+            <summary>导出审计 JSON</summary>
+            <pre>{{ episode | tojson(indent=2) }}</pre>
+        </details>
+    </div>
+</div>
+
+<div class="no-print" style="text-align:center;color:var(--text-muted);font-size:12px;margin-top:16px;">
+    SuperSenseDoctor v0.1.0 — 仅用于论文开发测试
+</div>
+{% endblock %}

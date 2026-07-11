@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block title %}诊断事件{% endblock %}
+{% block head_extra %}
+<style>
+    .episode-row { cursor: pointer; }
+    .episode-row:hover td { background: #f8fafc; }
+    .filter-count { font-size: 13px; color: var(--text-secondary); }
+    .pagination { display: flex; align-items: center; gap: 8px; margin-top: 14px; justify-content: center; }
+    .pagination .btn:disabled { opacity: .4; cursor: not-allowed; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="flex flex-wrap mb-16">
+    <h1>诊断事件</h1>
+    <span class="text-muted text-sm ml-auto" id="episode-count">加载中...</span>
+</div>
+
+<!-- Filters -->
+<div class="card mb-16">
+    <div class="card-body">
+        <div class="filter-bar">
+            <select id="filter-level" onchange="applyFilters()">
+                <option value="">全部级别</option>
+                <option value="L0">L0</option>
+                <option value="L1">L1</option>
+                <option value="L2">L2</option>
+                <option value="L3">L3</option>
+                <option value="L4">L4</option>
+            </select>
+            <select id="filter-event-type" onchange="applyFilters()">
+                <option value="">全部类型</option>
+                <option value="hr_abnormal">心率异常</option>
+                <option value="rr_bradypnea">呼吸过缓</option>
+                <option value="rr_tachypnea">呼吸急促</option>
+                <option value="rr_baseline_deviation">RR基线偏离</option>
+                <option value="temp_abnormal">体温异常</option>
+                <option value="fall_detected">跌倒</option>
+                <option value="low_confidence">低置信度</option>
+                <option value="nlos_occlusion">NLOS遮挡</option>
+                <option value="modality_conflict">模态冲突</option>
+            </select>
+            <input type="text" id="filter-search" placeholder="搜索关键词..." onchange="applyFilters()" style="width:180px;">
+            <button class="btn btn-secondary btn-sm" onclick="clearFilters()">清除筛选</button>
+        </div>
+    </div>
+</div>
+
+<!-- Table -->
+<div class="card">
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>级别</th>
+                    <th>事件类型</th>
+                    <th>触发原因</th>
+                    <th>行动</th>
+                    <th>时间</th>
+                    <th>状态</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody id="episode-tbody">
+                <tr><td colspan="7" class="table-empty">加载中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <div class="pagination" id="pagination"></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+let currentPage = 0;
+const PAGE_SIZE = 50;
+
+function getFilters() {
+    const params = new URLSearchParams(window.location.search);
+    return {
+        level: params.get('level') || document.getElementById('filter-level').value,
+        event_type: params.get('event_type') || document.getElementById('filter-event-type').value,
+        search: params.get('query') || document.getElementById('filter-search').value,
+    };
+}
+
+function setFilters(f) {
+    if (f.level) document.getElementById('filter-level').value = f.level;
+    if (f.event_type) document.getElementById('filter-event-type').value = f.event_type;
+    if (f.search) document.getElementById('filter-search').value = f.search;
+}
+
+async function loadEpisodes(page) {
+    const f = getFilters();
+    const offset = page * PAGE_SIZE;
+    let url = `/api/episodes?limit=${PAGE_SIZE}&offset=${offset}`;
+    if (f.level) url += `&level=${f.level}`;
+    if (f.event_type) url += `&event_type=${f.event_type}`;
+    if (f.search) url += `&query=${encodeURIComponent(f.search)}`;
+
+    try {
+        const r = await fetch(url);
+        const d = await r.json();
+        if (d.status !== 'ok') throw new Error(d.status);
+        renderEpisodes(d.episodes, d.total, page);
+    } catch (e) {
+        document.getElementById('episode-tbody').innerHTML =
+            `<tr><td colspan="7" class="table-empty">加载失败: ${e.message}</td></tr>`;
+    }
+}
+
+function renderEpisodes(episodes, total, page) {
+    const tbody = document.getElementById('episode-tbody');
+    document.getElementById('episode-count').textContent = `共 ${total} 条`;
+
+    if (!episodes || episodes.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="table-empty">无匹配诊断记录</td></tr>';
+        document.getElementById('pagination').innerHTML = '';
+        return;
+    }
+
+    let html = '';
+    episodes.forEach(ep => {
+        const dec = ep.decision || {};
+        const level = dec.level || 'L0';
+        const label = dec.label || '';
+        const interp = dec.event_interpretation || '';
+        const et = ep.health_event_type || ep.event_id?.split('_')[0] || '?';
+        const trigger = ep.health_trigger || ep.event_id || '';
+        const act = ep.action?.channel || '—';
+        const ts = ep.start_time ? ep.start_time.slice(0,16).replace('T',' ') : '';
+        const badgeCls = level === 'L0' ? 'ok' : level === 'L1' ? 'warn' : level === 'L2' ? 'warn' : 'danger';
+        html += `<tr class="episode-row" onclick="window.location='/episode/${ep.episode_id}'">
+            <td><span class="badge badge-${badgeCls}">${level}</span></td>
+            <td><span class="text-sm">${et}</span></td>
+            <td><span class="text-sm text-muted" style="max-width:240px;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${trigger}">${trigger}</span></td>
+            <td><span class="text-sm text-muted">${act}</span></td>
+            <td><span class="text-xs text-muted">${ts}</span></td>
+            <td><span class="status-dot ${level === 'L4' ? 'danger' : level === 'L0' ? 'ok' : 'warn'}"></span></td>
+            <td><a href="/episode/${ep.episode_id}" class="text-sm" style="color:#2563eb;">详情 →</a></td>
+        </tr>`;
+    });
+    tbody.innerHTML = html;
+
+    // Pagination
+    const totalPages = Math.ceil(total / PAGE_SIZE);
+    const pg = document.getElementById('pagination');
+    if (totalPages <= 1) { pg.innerHTML = ''; return; }
+    pg.innerHTML = `
+        <button class="btn btn-secondary btn-sm" onclick="goPage(${page-1})" ${page <= 0 ? 'disabled' : ''}>上一页</button>
+        <span class="text-xs text-muted">${page+1} / ${totalPages}</span>
+        <button class="btn btn-secondary btn-sm" onclick="goPage(${page+1})" ${page >= totalPages-1 ? 'disabled' : ''}>下一页</button>`;
+}
+
+function goPage(page) {
+    if (page < 0) return;
+    currentPage = page;
+    const f = getFilters();
+    const params = new URLSearchParams();
+    if (f.level) params.set('level', f.level);
+    if (f.event_type) params.set('event_type', f.event_type);
+    if (f.search) params.set('query', f.search);
+    const qs = params.toString();
+    const newUrl = '/episodes' + (qs ? '?' + qs : '');
+    window.history.replaceState(null, '', newUrl);
+    loadEpisodes(page);
+}
+
+function applyFilters() {
+    currentPage = 0;
+    goPage(0);
+}
+
+function clearFilters() {
+    document.getElementById('filter-level').value = '';
+    document.getElementById('filter-event-type').value = '';
+    document.getElementById('filter-search').value = '';
+    window.history.replaceState(null, '', '/episodes');
+    loadEpisodes(0);
+}
+
+// Init from URL
+const f = getFilters();
+setFilters(f);
+loadEpisodes(0);
+</script>
+{% endblock %}
