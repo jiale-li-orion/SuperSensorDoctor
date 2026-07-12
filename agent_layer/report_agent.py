@@ -9,20 +9,32 @@ from agent_layer.llm_provider import LLMProvider, ChatMessage
 
 
 REPORT_PROMPT = """
-You are a home-care shift report writer for SuperSenseDoctor.
+你是 SuperSenseDoctor 的周报生成助手。请基于过去 7 天的临床决策记录生成一份结构完整的中文周报。
 
-Your task: produce a concise Chinese-language weekly summary based on
-structured clinical decision records from the past 7 days.
+【约束】
+- 只能引用下方数据中明确列出的证据，不得虚构阈值或来源
+- 每一条 decision 的 clinical_basis 字段包含决策依据，标注了来源标签：
+  RCP_NEWS2_2017_REFERENCE = 绝对生理参考区间
+  RESIDENT_HISTORY = 个人纵向基线
+  SENSOR_FUSION = 传感融合可靠性
+  ACTIVITY_CONTEXT = 活动/姿势上下文
+  PROJECT_POLICY = 项目特有策略
+  NICE_NG249_2025 = 跌倒评估指南
+- 如果没有决策记录，只输出"本周无诊断记录。"
 
-Rules:
-- Only reference evidence explicitly listed below. Do not invent thresholds.
-- Each decision has a "clinical_basis" field. Cite it by source tag.
-- Distinguish between "absolute reference" (NEWS2), "personal baseline"
-  (RESIDENT_HISTORY), "sensing quality" (SENSOR_FUSION), and "activity
-  context" (ACTIVITY_CONTEXT).
-- If no decisions occurred this week, output "本周无诊断记录。"
-- Keep the report to 2-3 paragraphs.
-- End with the most notable clinical finding, if any.
+【输出结构】
+
+📊 本周摘要
+<总体统计：诊断总数、最高风险级别、最高频级别>
+
+📋 决策详情
+<按级别列出主要事件，每条附 clinical_basis 来源标签和关键发现>
+
+🔬 传感质量
+<NLOS 遮挡、低置信度、模态冲突的次数（有则写，无则跳过）>
+
+📌 重点关注
+<本周最值得关注的临床发现和后续建议>
 """
 
 
@@ -105,10 +117,43 @@ class ReportAgent:
 
             if events:
                 evt_types = {}
+                nlos_count = 0
+                low_conf_count = 0
+                conflict_count = 0
+                wifi_confs = []
+                mmwave_confs = []
                 for e in events:
                     et = e.get("event_type", "unknown") if isinstance(e, dict) else getattr(e, "event_type", "unknown")
                     evt_types[et] = evt_types.get(et, 0) + 1
+                    if et == "nlos_occlusion": nlos_count += 1
+                    if et == "low_confidence": low_conf_count += 1
+                    if et == "modality_conflict": conflict_count += 1
+                    wc = e.get("wifi_confidence") if isinstance(e, dict) else getattr(e, "wifi_confidence", None)
+                    mc = e.get("mmwave_confidence") if isinstance(e, dict) else getattr(e, "mmwave_confidence", None)
+                    if wc is not None: wifi_confs.append(float(wc))
+                    if mc is not None: mmwave_confs.append(float(mc))
                 context["event_types"] = evt_types
+                context["sensing_quality"] = {
+                    "nlos_count": nlos_count,
+                    "low_conf_count": low_conf_count,
+                    "conflict_count": conflict_count,
+                    "avg_wifi_confidence": round(sum(wifi_confs)/len(wifi_confs), 2) if wifi_confs else None,
+                    "avg_mmwave_confidence": round(sum(mmwave_confs)/len(mmwave_confs), 2) if mmwave_confs else None,
+                }
+
+            # Action breakdown
+            action_channels = {}
+            for ep in recent:
+                action = ep.get("action", {}) if isinstance(ep, dict) else getattr(ep, "action", {})
+                if isinstance(action, str):
+                    try:
+                        action = json.loads(action)
+                    except (json.JSONDecodeError, TypeError):
+                        action = {}
+                ch = action.get("channel", "none") if isinstance(action, dict) else "none"
+                action_channels[ch] = action_channels.get(ch, 0) + 1
+            if action_channels:
+                context["action_channels"] = action_channels
 
             try:
                 messages = [
