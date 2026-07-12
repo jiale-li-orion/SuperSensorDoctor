@@ -167,12 +167,23 @@ class ReportAgent:
                 pass  # fall through to rule-based
 
         # ── Rule-based fallback (enhanced, markdown format) ──
+        level_label = {"L0": "记录", "L1": "观察", "L2": "提醒", "L3": "通知", "L4": "紧急"}
+        source_label = {
+            "RCP_NEWS2_2017_REFERENCE": "临床参考",
+            "RESIDENT_HISTORY": "个人基线",
+            "SENSOR_FUSION": "传感融合",
+            "ACTIVITY_CONTEXT": "活动上下文",
+            "PROJECT_POLICY": "项目策略",
+            "NICE_NG249_2025": "跌倒评估",
+        }
         most_severe = max(level_counts, key=lambda k: (level_counts[k], k)) if any(level_counts.values()) else "L0"
-        lines = [f"## 📊 本周摘要\n\n**{len(recent)}** 次诊断记录在过去 7 天内。"]
+        most_frequent = max(level_counts, key=level_counts.get) if any(level_counts.values()) else "L0"
+        lines = [f"## 📊 本周摘要\n\n共 **{len(recent)}** 次诊断。"]
         for level in ["L0", "L1", "L2", "L3", "L4"]:
             if level_counts.get(level, 0) > 0:
-                lines.append(f"- **{level}**: {level_counts[level]} 次")
-        lines.append(f"\n最严重级别: **{most_severe}**")
+                lines.append(f"- **{level_label[level]}**（{level}）: {level_counts[level]} 次")
+        lines.append(f"\n最高风险: **{level_label[most_severe]}**（{most_severe}）")
+        lines.append(f"最高频: **{level_label[most_frequent]}**（{most_frequent}）")
 
         # ── Clinical basis sources referenced ──
         sources_seen = set()
@@ -182,7 +193,8 @@ class ReportAgent:
                 if src and src not in sources_seen:
                     sources_seen.add(src)
         if sources_seen:
-            lines.append("\n**参考来源**: " + ", ".join(sorted(sources_seen)))
+            lines.append("\n**参考来源**: " + ", ".join(
+                f"{source_label.get(s, s)}（{s}）" for s in sorted(sources_seen)))
 
         # ── Confidence stats from events ──
         if events:
@@ -211,10 +223,10 @@ class ReportAgent:
                 lines.append(f"- 模态冲突: **{conflict_count}** 次")
             if wifi_confs:
                 avg_wifi = sum(wifi_confs) / len(wifi_confs)
-                lines.append(f"  - 平均 WiFi 置信度: {avg_wifi:.2f}")
+                lines.append(f"- 平均 WiFi 置信度: **{avg_wifi:.0%}**")
             if mmwave_confs:
                 avg_mmwave = sum(mmwave_confs) / len(mmwave_confs)
-                lines.append(f"  - 平均 mmWave 置信度: {avg_mmwave:.2f}")
+                lines.append(f"- 平均 mmWave 置信度: **{avg_mmwave:.0%}**")
 
         return "\n".join(lines)
 
