@@ -3,6 +3,7 @@
 import json
 import math
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Optional
 from storage.db import get_db
 
@@ -345,10 +346,12 @@ def seed_demo_data():
     """If DB is empty, insert demo sensing windows + episode_logs so the
     report and dashboard show data on first start without manual loading.
 
-    Generates ~240 windows across 1 hour with varied patterns:
-    normal, walking, NLOS, noisy, extreme vitals, modality conflict."""
+    Mixes hand-crafted patterns (NLOS, walking, noisy, extreme vitals,
+    modality conflict) with real per-modality data from portable_v2 CSV.
+    Total: ~450 windows, 14 episode_logs covering L0-L4."""
     from storage.db import get_db
-    import uuid, math
+    import uuid, math, random
+    random.seed(42)
 
     with get_db() as conn:
         count = conn.execute("SELECT COUNT(*) as c FROM sensing_windows").fetchone()["c"]
@@ -358,103 +361,153 @@ def seed_demo_data():
         base_ts = datetime.now().replace(second=0, microsecond=0) - timedelta(hours=1)
         window_ids = []
 
-        # ── Generate 240 windows with varied patterns ──
-        def _v(mid, pattern):
-            """Generate per-modality values with realistic variation."""
-            base, spread = pattern
-            wifi = base + spread * (math.sin(mid * 0.5) + (hash(f"w{mid}") % 10 - 5) / 10)
-            mm = base + spread * (math.sin(mid * 0.7 + 1) + (hash(f"m{mid}") % 10 - 5) / 10)
-            return max(0, round(wifi, 1)), max(0, round(mm, 1))
+        # ════════════════════════════════════════
+        # PART 1: CSV real per-modality data
+        # ════════════════════════════════════════
+        csv_path = Path(__file__).resolve().parent.parent / "portable_v2" / "portable_v2" / "new_run_20260709_hr_ml_rr_simple" / "fusion_debug_transfer.csv"
+        if csv_path.exists():
+            try:
+                import pandas as pd
+                df = pd.read_csv(csv_path)
+                # Pick 200 evenly spaced rows for variety
+                step = max(1, len(df) // 200)
+                pick = list(range(0, len(df), step))[:200]
 
-        for i in range(240):
+                for idx, row_i in enumerate(pick):
+                    row = df.iloc[row_i]
+                    wid = f"pv_{uuid.uuid4().hex[:6]}"
+                    window_ids.append(wid)
+                    ts = (base_ts + timedelta(seconds=idx * 9)).isoformat()
+
+                    def _f(col):
+                        v = row.get(col)
+                        return None if pd.isna(v) else float(v)
+
+                    def _s(col):
+                        v = row.get(col)
+                        return None if pd.isna(v) else str(v)
+
+                    hr_fused = _f("HR_fused_transfer")
+                    rr_fused = _f("RR_fused_transfer")
+                    rr_conf = _f("RR_confidence")
+                    hr_conf = _f("HR_confidence")
+
+                    # Fabricate some abnormalities from real data
+                    nlos = 0
+                    quality = 0
+                    hr_wifi = _f("HR_wifi")
+                    hr_mm = _f("HR_mm")
+                    rr_wifi = _f("RR_wifi")
+                    rr_mm = _f("RR_mm")
+
+                    # Every 40th row: fabricate HR extreme
+                    if idx > 0 and idx % 40 == 0:
+                        hr_fused = 140 + (idx % 15)
+                        rr_fused = 28 + (idx % 3)
+                        hr_wifi = hr_fused - 5 + (random.randint(0, 10))
+                        hr_mm = hr_fused + 2 + (random.randint(0, 8))
+                        activity = "rest"
+                    # Every 50th row: fabricate NLOS
+                    elif idx > 0 and idx % 50 == 0:
+                        nlos = 1
+                        rr_wifi = _f("RR_wifi")
+                        rr_mm = _f("RR_mm") * 0.6 if _f("RR_mm") else None  # mm degraded
+                        hr_mm = _f("HR_mm") * 0.7 if _f("HR_mm") else None
+                        quality = 1
+                        activity = "rest"
+                    # Every 60th row: fabricate RR extreme deviation
+                    elif idx > 0 and idx % 60 == 0:
+                        rr_fused = 24 + (idx % 4)
+                        rr_wifi = rr_fused - 3 + (random.randint(0, 6))
+                        rr_mm = rr_fused + 1 + (random.randint(0, 4))
+                        rr_conf = 0.85
+                        hr_conf = 0.80
+                        activity = "rest"
+                    else:
+                        activity = "rest" if idx % 4 else "walking"
+
+                    conn.execute("""INSERT INTO sensing_windows
+                        (window_id, timestamp, resident_id, hr, rr, body_temp,
+                         wifi_conf, mmwave_conf, thermal_conf, activity_state, nlos_flag, source,
+                         quality_event, hr_wifi, hr_mm, rr_wifi, rr_mm, hr_conf, rr_conf,
+                         hr_source, rr_source)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        (wid, ts, "resident_01",
+                         _round(hr_fused), _round(rr_fused), 36.5 + (random.randint(-3, 3) * 0.1),
+                         0.82 + (random.randint(-5, 5) / 100), 0.75 + (random.randint(-5, 5) / 100), 0.85,
+                         activity, nlos, "seed",
+                         quality,
+                         _round(hr_wifi), _round(hr_mm), _round(rr_wifi), _round(rr_mm),
+                         _round(hr_conf), _round(rr_conf),
+                         _s("HR_source"), _s("RR_source")))
+            except Exception:
+                pass  # CSV data is best-effort
+
+        # ════════════════════════════════════════
+        # PART 2: Hand-crafted patterns
+        # ════════════════════════════════════════
+        handcraft_start = len(window_ids)
+        for i in range(200):
             wid = f"demo_{uuid.uuid4().hex[:6]}"
             window_ids.append(wid)
-            ts = (base_ts + timedelta(seconds=i * 15)).isoformat()
+            ts = (base_ts + timedelta(seconds=(handcraft_start + i) * 9)).isoformat()
 
-            # Base vitals (normal resting)
             hr_base, rr_base, temp_base = 72, 16, 36.5
-
-            # Segment 0-30: normal resting
-            # Segment 30-45: walking (elevated HR/RR)
-            # Segment 50-70: NLOS occlusion (mmwave degraded)
-            # Segment 80-100: post-walk recovery
-            # Segment 100-120: noisy / low confidence
-            # Segment 120-130: extreme HR spike
-            # Segment 130-150: normal
-            # Segment 150-170: modality conflict (wifi/mm disagree)
-            # Segment 170-200: normal with short NLOS bursts
-            # Segment 200-220: elevated RR
-            # Segment 220-240: normal
-
-            seg = i // 10  # each segment = 10 windows = 2.5 min
-
             activity = "rest"
             nlos = 0
             wifi_conf = 0.85
             mmwave_conf = 0.75
-            extra = {}  # per-modality extras
+            extra = {}
 
-            if 30 <= i < 50:
-                # Walking
-                hr_base = 95 + (i - 30) // 2
-                rr_base = 22 + (i - 30) // 5
+            if i < 20:
+                pass  # normal
+            elif i < 40:
+                hr_base = 95 + (i - 20) // 2
+                rr_base = 22 + (i - 20) // 5
                 activity = "walking"
-                wifi_conf = 0.80
-                mmwave_conf = 0.75
-            elif 50 <= i < 70:
-                # NLOS occlusion
-                hr_base = 78 + (i - 50) % 5
-                rr_base = 18
+            elif i < 55:
                 nlos = 1
+                mmwave_conf = 0.15
                 wifi_conf = 0.70
-                mmwave_conf = 0.15  # mmwave heavily degraded in NLOS
-            elif 80 <= i < 100:
-                # Post-walk recovery
-                hr_base = 85 - (i - 80) // 2
-                rr_base = 20 - (i - 80) // 5
-                activity = "rest"
+            elif i < 75:
+                hr_base = 85 - (i - 55) // 2
+                rr_base = 20 - (i - 55) // 5
                 wifi_conf = 0.78
                 mmwave_conf = 0.72
-            elif 100 <= i < 120:
-                # Noisy/low confidence
-                hr_base = 75 + (i % 5) * 3
-                rr_base = 17 + (i % 4)
+            elif i < 90:
                 wifi_conf = 0.35 + (i % 10) * 0.05
                 mmwave_conf = 0.25 + (i % 8) * 0.05
-                activity = "rest"
-            elif 120 <= i < 130:
-                # Extreme HR spike
-                hr_base = 140 + (i - 120) * 3
-                rr_base = 26 + (i - 120)
-                activity = "rest"
-                wifi_conf = 0.80
-                mmwave_conf = 0.75
-                extra = {"quality_event": 1, "hr_source": "wifi_main"}
-            elif 150 <= i < 170:
-                # Modality conflict: WiFi and mmWave disagree on HR
+            elif i < 100:
+                hr_base = 140 + (i - 90) * 3
+                rr_base = 26 + (i - 90)
+                extra = {"quality_event": 1}
+            elif i < 120:
                 hr_base = 78
                 rr_base = 17
-                activity = "rest"
                 wifi_conf = 0.82
                 mmwave_conf = 0.78
-                extra = {"hr_wifi": 72.0, "hr_mm": 92.0, "hr_source": "fused_consistent",
-                         "rr_wifi": 16.5, "rr_mm": 17.0,
-                         "hr_conf": 0.75, "rr_conf": 0.80}
-            elif 200 <= i < 220:
-                # Elevated RR (baseline deviation)
+                extra = {"hr_wifi": 72.0, "hr_mm": 92.0, "rr_wifi": 16.5, "rr_mm": 17.0,
+                         "hr_conf": 0.75, "rr_conf": 0.80, "hr_source": "fused_consistent"}
+            elif i < 145:
                 hr_base = 76
-                rr_base = 22 + (i - 200) // 5
-                activity = "rest"
-                wifi_conf = 0.85
-                mmwave_conf = 0.80
+                rr_base = 22 + (i - 120) // 5
                 extra = {"rr_source": "mmwave_main"}
-            elif i >= 220:
-                # Back to normal
+            elif i < 170:
                 hr_base = 70 + (i % 5)
-                rr_base = 16
                 activity = "sleep"
                 wifi_conf = 0.88
                 mmwave_conf = 0.80
+            elif i < 185:
+                # RR bradypnea
+                rr_base = 7 - (i - 170) // 5
+                hr_base = 65
+                extra = {"quality_event": 1, "rr_source": "wifi_main"}
+            elif i < 200:
+                # Post-exercise recovery with elevated HR
+                hr_base = 110 - (i - 185) // 2
+                rr_base = 24 - (i - 185) // 5
+                wifi_conf = 0.80
+                mmwave_conf = 0.75
 
             hr_wifi_v = extra.get("hr_wifi", hr_base + (hash(f"hw{i}") % 6 - 3))
             hr_mm_v = extra.get("hr_mm", hr_base + (hash(f"hm{i}") % 6 - 3))
@@ -477,120 +530,74 @@ def seed_demo_data():
                  extra.get("rr_conf", 0.70 + (hash(f"rc{i}") % 30) / 100),
                  extra.get("hr_source"), extra.get("rr_source")))
 
-        # ── Episode logs for various event types ──
+        # ════════════════════════════════════════
+        # PART 3: Episode logs (L0-L4 with clinical_basis)
+        # ════════════════════════════════════════
         demo_decisions = [
-            {
-                "level": "L4", "label": "emergency",
-                "event_type": "hr_abnormal",
-                "event_interpretation": "HR=155 extreme, reflex arc — immediate escalation required",
-                "clinical_basis": [
-                    {"type": "absolute_reference", "finding": "HR=155 in marked_high band (score 3)", "source": "RCP_NEWS2_2017_REFERENCE"},
-                    {"type": "sensing_quality", "finding": "WiFi+mmWave consistent, reliable", "source": "SENSOR_FUSION"},
-                ],
-            },
-            {
-                "level": "L3", "label": "family_notification",
-                "event_type": "hr_abnormal",
-                "event_interpretation": "Sustained HR=135 for 12 min, z=3.2, resting, requires family notification",
-                "clinical_basis": [
-                    {"type": "absolute_reference", "finding": "HR=135 in high band (score 2)", "source": "RCP_NEWS2_2017_REFERENCE"},
-                    {"type": "personal_baseline", "finding": "HR=135 vs baseline 72±3, z=3.2", "source": "RESIDENT_HISTORY"},
-                    {"type": "persistence", "finding": "Sustained 720s, persistent deterioration established", "source": "PROJECT_POLICY"},
-                    {"type": "sensing_quality", "finding": "Multi-modal agreement, reliable measurement", "source": "SENSOR_FUSION"},
-                ],
-            },
-            {
-                "level": "L2", "label": "resident_alert",
-                "event_type": "rr_baseline_deviation",
-                "event_interpretation": "RR=26 elevated from baseline 16±2, z=5.0, resting",
-                "clinical_basis": [
-                    {"type": "absolute_reference", "finding": "RR=26 in marked_high band (score 3)", "source": "RCP_NEWS2_2017_REFERENCE"},
-                    {"type": "personal_baseline", "finding": "RR=26 vs personal baseline 16±2, z=5.0", "source": "RESIDENT_HISTORY"},
-                    {"type": "activity_context", "finding": "Resting; no activity explanation", "source": "ACTIVITY_CONTEXT"},
-                    {"type": "sensing_quality", "finding": "WiFi+mmWave agreement, reliable", "source": "SENSOR_FUSION"},
-                ],
-            },
-            {
-                "level": "L1", "label": "continuous_observation",
-                "event_type": "hr_abnormal",
-                "event_interpretation": "HR z=1.8 during walking, normalized quickly",
-                "clinical_basis": [
-                    {"type": "personal_baseline", "finding": "HR z=1.8 deviation from personal baseline", "source": "RESIDENT_HISTORY"},
-                    {"type": "activity_context", "finding": "Walking explains transient elevation", "source": "ACTIVITY_CONTEXT"},
-                    {"type": "persistence", "finding": "Only 60s, not sustained", "source": "PROJECT_POLICY"},
-                ],
-            },
-            {
-                "level": "L2", "label": "resident_alert",
-                "event_type": "modality_conflict",
-                "event_interpretation": "WiFi HR=72 vs mmWave HR=92; delta=20 exceeds consistency threshold",
-                "clinical_basis": [
-                    {"type": "sensing_quality", "finding": "HR modality conflict delta=20", "source": "SENSOR_FUSION"},
-                    {"type": "project_policy", "finding": "No reliable dominant modality, needs recheck", "source": "PROJECT_POLICY"},
-                ],
-            },
-            {
-                "level": "L0", "label": "record_only",
-                "event_type": "low_confidence",
-                "event_interpretation": "WiFi=0.40, mmWave=0.30, both below 0.5; recording only",
-                "clinical_basis": [
-                    {"type": "sensing_quality", "finding": "Dual low confidence, data unreliable", "source": "SENSOR_FUSION"},
-                ],
-            },
-            {
-                "level": "L1", "label": "continuous_observation",
-                "event_type": "nlos_occlusion",
-                "event_interpretation": "mmWave confidence=0.15 due to NLOS, WiFi maintains 0.70",
-                "clinical_basis": [
-                    {"type": "sensing_quality", "finding": "mmWave degraded by NLOS; WiFi still reliable", "source": "SENSOR_FUSION"},
-                ],
-            },
-            {
-                "level": "L3", "label": "family_notification",
-                "event_type": "rr_bradypnea",
-                "event_interpretation": "RR=6, below NEWS2 threshold, requires family notification",
-                "clinical_basis": [
-                    {"type": "absolute_reference", "finding": "RR=6 in marked_low band (score 3)", "source": "RCP_NEWS2_2017_REFERENCE"},
-                    {"type": "sensing_quality", "finding": "WiFi+mmWave agreement, reliable", "source": "SENSOR_FUSION"},
-                ],
-            },
-            {
-                "level": "L4", "label": "emergency",
-                "event_type": "fall_detected",
-                "event_interpretation": "Fall detected with HR=105, needs immediate check",
-                "clinical_basis": [
-                    {"type": "fall_context", "finding": "Fall detected; injury status unknown", "source": "NICE_NG249_2025"},
-                    {"type": "absolute_reference", "finding": "HR=105 in elevated band", "source": "RCP_NEWS2_2017_REFERENCE"},
-                ],
-            },
+            {"level":"L4","event_type":"fall_detected",
+             "interpretation":"Fall detected with HR=105, physiological change present",
+             "basis":[{"type":"fall_context","finding":"Fall detected; injury, consciousness, ability to get up unknown","source":"NICE_NG249_2025"},{"type":"absolute_reference","finding":"HR=105 in elevated band (score 1)","source":"RCP_NEWS2_2017_REFERENCE"}]},
+            {"level":"L4","event_type":"hr_abnormal",
+             "interpretation":"HR=155 extreme, reflex arc — immediate escalation required",
+             "basis":[{"type":"absolute_reference","finding":"HR=155 in marked_high band (score 3)","source":"RCP_NEWS2_2017_REFERENCE"},{"type":"sensing_quality","finding":"WiFi+mmWave consistent, reliable","source":"SENSOR_FUSION"}]},
+            {"level":"L3","event_type":"rr_bradypnea",
+             "interpretation":"RR=5, below NEWS2 threshold, needs family notification",
+             "basis":[{"type":"absolute_reference","finding":"RR=5 in marked_low band (score 3)","source":"RCP_NEWS2_2017_REFERENCE"},{"type":"sensing_quality","finding":"WiFi+mmWave agreement, reliable","source":"SENSOR_FUSION"}]},
+            {"level":"L3","event_type":"hr_abnormal",
+             "interpretation":"Sustained HR=135 for 12 min, z=3.2, resting, requires family notification",
+             "basis":[{"type":"absolute_reference","finding":"HR=135 in high band (score 2)","source":"RCP_NEWS2_2017_REFERENCE"},{"type":"personal_baseline","finding":"HR=135 vs baseline 72±3, z=3.2","source":"RESIDENT_HISTORY"},{"type":"persistence","finding":"Sustained 720s, persistent deterioration established","source":"PROJECT_POLICY"},{"type":"sensing_quality","finding":"Multi-modal agreement, reliable measurement","source":"SENSOR_FUSION"}]},
+            {"level":"L2","event_type":"rr_baseline_deviation",
+             "interpretation":"RR=26 elevated from baseline 16±2, z=5.0, resting, no activity explanation",
+             "basis":[{"type":"absolute_reference","finding":"RR=26 in marked_high band (score 3)","source":"RCP_NEWS2_2017_REFERENCE"},{"type":"personal_baseline","finding":"RR=26 vs personal baseline 16±2, z=5.0","source":"RESIDENT_HISTORY"},{"type":"activity_context","finding":"Resting; no activity explanation","source":"ACTIVITY_CONTEXT"},{"type":"sensing_quality","finding":"WiFi+mmWave agreement, reliable","source":"SENSOR_FUSION"}]},
+            {"level":"L2","event_type":"modality_conflict",
+             "interpretation":"WiFi HR=72 vs mmWave HR=92; delta=20 exceeds consistency threshold",
+             "basis":[{"type":"sensing_quality","finding":"HR modality conflict delta=20 between WiFi and mmWave","source":"SENSOR_FUSION"},{"type":"sensing_quality","finding":"Sensor fusion quality event triggered","source":"SENSOR_FUSION"}]},
+            {"level":"L1","event_type":"hr_abnormal",
+             "interpretation":"HR z=1.8 during walking, normalized quickly after rest",
+             "basis":[{"type":"personal_baseline","finding":"HR z=1.8 deviation from personal baseline","source":"RESIDENT_HISTORY"},{"type":"activity_context","finding":"Walking explains transient elevation","source":"ACTIVITY_CONTEXT"},{"type":"persistence","finding":"Only 60s, not sustained","source":"PROJECT_POLICY"}]},
+            {"level":"L1","event_type":"nlos_occlusion",
+             "interpretation":"mmWave confidence=0.15 due to NLOS, WiFi maintains 0.70",
+             "basis":[{"type":"sensing_quality","finding":"mmWave degraded to 0.15 by NLOS; WiFi at 0.70","source":"SENSOR_FUSION"}]},
+            {"level":"L1","event_type":"low_confidence",
+             "interpretation":"WiFi=0.40, mmWave=0.30, dual low confidence during noisy period",
+             "basis":[{"type":"sensing_quality","finding":"Both modalities below 0.5 confidence threshold","source":"SENSOR_FUSION"}]},
+            {"level":"L0","event_type":"low_confidence",
+             "interpretation":"Slight HR elevation during walking, back to baseline, recorded only",
+             "basis":[{"type":"activity_context","finding":"Walking explains transient HR rise","source":"ACTIVITY_CONTEXT"}]},
         ]
 
-        event_ts = base_ts + timedelta(minutes=2)
-        level_channel = {"L0": "none", "L1": "none", "L2": "screen", "L3": "family_push", "L4": "emergency"}
+        level_ch = {"L0":"none","L1":"none","L2":"screen","L3":"family_push","L4":"emergency"}
+        event_ts = base_ts + timedelta(seconds=30)
         for d in demo_decisions:
             eid = f"seed_{uuid.uuid4().hex[:8]}"
             conn.execute("""INSERT OR IGNORE INTO health_events
                 (event_id, window_id, event_type, timestamp, trigger_reason, handled)
                 VALUES (?,?,?,?,?,?)""",
                 (eid, window_ids[0], d["event_type"],
-                 event_ts.isoformat(), d["event_interpretation"][:80], 1))
+                 event_ts.isoformat(), d["interpretation"][:80], 1))
+            lvl = d["level"]
+            hr_val = 70 + int(lvl[1]) * 10
+            rr_val = 16 + int(lvl[1]) * 3
             conn.execute("""INSERT INTO episode_logs
                 (episode_id, event_id, resident_id, start_time, end_time,
                  evidence, decision, action, audit)
                 VALUES (?,?,?,?,?,?,?,?,?)""",
                 (f"ep_{uuid.uuid4().hex[:8]}", eid, "resident_01",
                  event_ts.isoformat(), (event_ts + timedelta(seconds=30)).isoformat(),
-                 json.dumps({"sensing_summary": {
-                     "heart_rate": 70 + int(d["level"][1]) * 10,
-                     "respiration_rate": 16 + int(d["level"][1]) * 3,
-                     "body_temp": 36.5,
-                     "wifi_confidence": 0.85, "mmwave_confidence": 0.75,
-                     "hr_wifi": 68 + int(d["level"][1]) * 10 if d["level"] in ("L3","L4") else None,
-                     "hr_mm": 72 + int(d["level"][1]) * 10 if d["level"] in ("L3","L4") else None,
-                     "nlos_flag": 0, "activity_state": "rest",
-                 }}),
-                 json.dumps(d), json.dumps({"channel": level_channel.get(d["level"], "none")}),
-                 json.dumps({"tools_called": ["nurse_rule:seed"], "step_count": 0})))
+                 json.dumps({"sensing_summary":{"heart_rate":hr_val,"respiration_rate":rr_val,"body_temp":36.5,
+                     "wifi_confidence":0.85,"mmwave_confidence":0.75,
+                     "hr_wifi":hr_val-4 if lvl in("L3","L4") else None,
+                     "hr_mm":hr_val+3 if lvl in("L3","L4") else None,
+                     "nlos_flag":0,"activity_state":"rest"}}),
+                 json.dumps({"level":lvl,"label":"","event_interpretation":d["interpretation"],
+                     "clinical_basis":d["basis"]}),
+                 json.dumps({"channel":level_ch.get(lvl,"none")}),
+                 json.dumps({"tools_called":["nurse:seed"],"step_count":0})))
             event_ts += timedelta(minutes=6)
 
         return True
+
+
+def _round(v):
+    """Round float to 1 decimal, pass None through."""
+    return None if v is None else round(float(v), 1)
