@@ -35,6 +35,11 @@ app = FastAPI(title="SuperSenseDoctor", version="0.1.0")
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 STATIC_DIR = Path(__file__).parent / "static"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+# Register markdown filter for report rendering
+import markdown as md_lib
+templates.env.filters["markdown"] = lambda t: md_lib.markdown(t, extensions=["nl2br"]) if t else ""
+
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 

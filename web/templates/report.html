@@ -16,6 +16,15 @@
         .print-only { display: block; }
         .card { break-inside: avoid; box-shadow: none; border: 1px solid #ddd; }
     }
+    .report-content { font-size: 14px; line-height: 1.8; padding: 24px; }
+    .report-content h1, .report-content h2, .report-content h3 { margin: 20px 0 10px; font-weight: 600; color: var(--text); }
+    .report-content h1:first-child, .report-content h2:first-child { margin-top: 0; }
+    .report-content h2 { font-size: 17px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+    .report-content h3 { font-size: 15px; }
+    .report-content ul { padding-left: 20px; margin: 8px 0; }
+    .report-content li { margin: 4px 0; }
+    .report-content p { margin: 8px 0; }
+    .report-content strong { font-weight: 600; }
 </style>
 {% endblock %}
 {% block content %}
@@ -33,8 +42,8 @@
 
 <!-- LLM生成的周报文本 -->
 {% if report_text %}
-<div class="card mb-16">
-    <div class="card-body" style="font-size:14px;line-height:1.8;white-space:pre-wrap;">{{ report_text }}</div>
+<div class="card mb-16 report-content">
+    {{ report_text | markdown | safe }}
 </div>
 {% endif %}
 

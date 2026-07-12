@@ -24,16 +24,16 @@ REPORT_PROMPT = """
 
 【输出结构】
 
-📊 本周摘要
+## 📊 本周摘要
 <总体统计：诊断总数、最高风险级别、最高频级别>
 
-📋 决策详情
+## 📋 决策详情
 <按级别列出主要事件，每条附 clinical_basis 来源标签和关键发现>
 
-🔬 传感质量
+## 🔬 传感质量
 <NLOS 遮挡、低置信度、模态冲突的次数（有则写，无则跳过）>
 
-📌 重点关注
+## 📌 重点关注
 <本周最值得关注的临床发现和后续建议>
 """
 
@@ -166,22 +166,23 @@ class ReportAgent:
             except Exception:
                 pass  # fall through to rule-based
 
-        # ── Rule-based fallback (enhanced) ──
-        lines = [f"本周报告（{len(recent)} 次诊断）"]
+        # ── Rule-based fallback (enhanced, markdown format) ──
+        most_severe = max(level_counts, key=lambda k: (level_counts[k], k)) if any(level_counts.values()) else "L0"
+        lines = [f"## 📊 本周摘要\n\n**{len(recent)}** 次诊断记录在过去 7 天内。"]
         for level in ["L0", "L1", "L2", "L3", "L4"]:
             if level_counts.get(level, 0) > 0:
-                lines.append(f"  {level}: {level_counts[level]} 次")
-        most_severe = max(level_counts, key=lambda k: (level_counts[k], k))
-        lines.append(f"  最严重级别: {most_severe}")
+                lines.append(f"- **{level}**: {level_counts[level]} 次")
+        lines.append(f"\n最严重级别: **{most_severe}**")
 
-        # ── Clinical basis per level ──
+        # ── Clinical basis sources referenced ──
         sources_seen = set()
         for entry in decision_entries:
             for cb in entry.get("clinical_basis", []):
                 src = cb.get("source", "")
                 if src and src not in sources_seen:
                     sources_seen.add(src)
-                    lines.append(f"  - 参考来源: {src}")
+        if sources_seen:
+            lines.append("\n**参考来源**: " + ", ".join(sorted(sources_seen)))
 
         # ── Confidence stats from events ──
         if events:
@@ -201,13 +202,13 @@ class ReportAgent:
                 if wc is not None: wifi_confs.append(float(wc))
                 if mc is not None: mmwave_confs.append(float(mc))
 
-            lines.append(f"\n  传感状态:")
+            lines.append(f"\n### 🔬 传感质量")
             if nlos_count > 0:
-                lines.append(f"  - NLOS 遮挡: {nlos_count} 次")
+                lines.append(f"- NLOS 遮挡: **{nlos_count}** 次")
             if low_conf_count > 0:
-                lines.append(f"  - 低置信度: {low_conf_count} 次")
+                lines.append(f"- 低置信度: **{low_conf_count}** 次")
             if conflict_count > 0:
-                lines.append(f"  - 模态冲突: {conflict_count} 次")
+                lines.append(f"- 模态冲突: **{conflict_count}** 次")
             if wifi_confs:
                 avg_wifi = sum(wifi_confs) / len(wifi_confs)
                 lines.append(f"  - 平均 WiFi 置信度: {avg_wifi:.2f}")
