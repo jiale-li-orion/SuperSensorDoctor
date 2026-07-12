@@ -648,9 +648,26 @@ async def report_page(request: Request):
                 break
         event_dicts.append(ed)
 
-    report_text = ReportAgent().generate_weekly_report(
-        [type('Ep', (object,), {'start_time': ref_ts, 'decision': ep.get('decision', {})})() for ep in week_episodes],
+    # ── Build clinical decision entries for LLM report ──
+    try:
+        from agent_layer.llm_provider import DeepSeekProvider
+        import os, yaml
+        config = yaml.safe_load(open(Path(__file__).parent.parent / "config.yaml"))
+        llm_cfg = config["llm"]
+        report_llm = DeepSeekProvider(
+            api_key=os.getenv("DEEPSEEK_API_KEY", llm_cfg.get("api_key", "")),
+            model=llm_cfg["model"],
+            base_url=llm_cfg["base_url"],
+            temperature=0.3,
+        )
+    except Exception:
+        report_llm = None
+
+    report_text = await ReportAgent().generate_weekly_report(
+        week_episodes,
         events=event_dicts,
+        llm_provider=report_llm,
+        reference_ts=ref_ts,
     )
 
     nlos_count = sum(1 for e in events if e.get("nlos_flag") or e.get("event_type") == "nlos_occlusion")

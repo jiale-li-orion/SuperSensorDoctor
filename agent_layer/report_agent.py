@@ -1,71 +1,160 @@
 """Report Agent — 周报生成 + 自然语言 Q&A"""
 
+import json
 from datetime import datetime, timedelta
 from typing import Optional
 
 from agent_layer.state_objects import EpisodeLog
+from agent_layer.llm_provider import LLMProvider, ChatMessage
+
+
+REPORT_PROMPT = """
+You are a home-care shift report writer for SuperSenseDoctor.
+
+Your task: produce a concise Chinese-language weekly summary based on
+structured clinical decision records from the past 7 days.
+
+Rules:
+- Only reference evidence explicitly listed below. Do not invent thresholds.
+- Each decision has a "clinical_basis" field. Cite it by source tag.
+- Distinguish between "absolute reference" (NEWS2), "personal baseline"
+  (RESIDENT_HISTORY), "sensing quality" (SENSOR_FUSION), and "activity
+  context" (ACTIVITY_CONTEXT).
+- If no decisions occurred this week, output "本周无诊断记录。"
+- Keep the report to 2-3 paragraphs.
+- End with the most notable clinical finding, if any.
+"""
 
 
 class ReportAgent:
-    """非 LLM 报告生成（关键词匹配 Q&A + 规则统计）"""
+    """周报生成（LLM + 规则降级）"""
 
-    def generate_weekly_report(self, episodes: list[EpisodeLog],
-                               events: Optional[list] = None) -> str:
+    async def generate_weekly_report(
+        self,
+        episodes: list[EpisodeLog],
+        events: Optional[list] = None,
+        llm_provider: Optional[LLMProvider] = None,
+        reference_ts: Optional[datetime] = None,
+    ) -> str:
         """生成周报摘要。
-        
-        Args:
-            episodes: 诊断记录列表
-            events: 可选的事件列表 (含 rule_markers, 用于计算融合/置信度统计)
-        """
-        recent = [e for e in episodes if e.start_time >= datetime.now() - timedelta(days=7)]
 
+        Args:
+            episodes: 诊断记录列表（dict with decision, evidence, action）
+            events: 可选的事件列表 (含 rule_markers)
+            llm_provider: 可选 LLM，传入时用 LLM 生成自然语言报告
+            reference_ts: 参考时间戳，用于过滤最近 7 天
+        """
+        ref = reference_ts or datetime.now()
+        # Strip tz for naive comparison
+        if ref.tzinfo is not None:
+            ref = ref.replace(tzinfo=None)
+        cutoff = ref - timedelta(days=7)
+
+        def _should_include(ep):
+            if isinstance(ep, dict):
+                ts_str = ep.get("start_time")
+            else:
+                ts_str = getattr(ep, "start_time", None)
+            if ts_str is None:
+                return False
+            if isinstance(ts_str, datetime):
+                return ts_str >= cutoff
+            try:
+                dt = datetime.fromisoformat(str(ts_str))
+                if dt.tzinfo is not None:
+                    dt = dt.replace(tzinfo=None)
+                return dt >= cutoff
+            except (ValueError, TypeError):
+                return False
+
+        recent = [e for e in episodes if _should_include(e)]
         if not recent:
             return "本周无诊断记录。"
 
-        total = len(recent)
+        # ── Build structured summary ──
         level_counts = {"L0": 0, "L1": 0, "L2": 0, "L3": 0, "L4": 0}
-        for ep in recent:
-            level = ep.decision.get("level", "L0")
-            level_counts[level] = level_counts.get(level, 0) + 1
+        decision_entries = []
 
-        lines = [f"本周报告（{total} 次诊断）"]
+        for ep in recent:
+            dec = ep.get("decision", {}) if isinstance(ep, dict) else getattr(ep, "decision", {})
+            if isinstance(dec, str):
+                try:
+                    dec = json.loads(dec)
+                except (json.JSONDecodeError, TypeError):
+                    dec = {}
+            level = dec.get("level", "L0")[:2]
+            if level in level_counts:
+                level_counts[level] += 1
+
+            entry = {
+                "level": level,
+                "label": dec.get("label", ""),
+                "event_interpretation": dec.get("event_interpretation", ""),
+                "clinical_basis": dec.get("clinical_basis", []),
+            }
+            decision_entries.append(entry)
+
+        # ── LLM path ──
+        if llm_provider is not None:
+            context = {
+                "period": f"{cutoff.isoformat()} ~ {ref.isoformat()}",
+                "total_decisions": len(recent),
+                "level_counts": level_counts,
+                "decisions": decision_entries,
+            }
+
+            if events:
+                evt_types = {}
+                for e in events:
+                    et = e.get("event_type", "unknown") if isinstance(e, dict) else getattr(e, "event_type", "unknown")
+                    evt_types[et] = evt_types.get(et, 0) + 1
+                context["event_types"] = evt_types
+
+            try:
+                messages = [
+                    ChatMessage(role="system", content=REPORT_PROMPT),
+                    ChatMessage(role="user", content=json.dumps(context, ensure_ascii=False, indent=2, default=str)),
+                ]
+                resp = await llm_provider.chat(messages)
+                if resp and resp.content:
+                    return resp.content.strip()
+            except Exception:
+                pass  # fall through to rule-based
+
+        # ── Rule-based fallback (enhanced) ──
+        lines = [f"本周报告（{len(recent)} 次诊断）"]
         for level in ["L0", "L1", "L2", "L3", "L4"]:
             if level_counts.get(level, 0) > 0:
                 lines.append(f"  {level}: {level_counts[level]} 次")
         most_severe = max(level_counts, key=lambda k: (level_counts[k], k))
         lines.append(f"  最严重级别: {most_severe}")
 
-        # ── 置信度与融合统计 (Phase H) ──
+        # ── Clinical basis per level ──
+        sources_seen = set()
+        for entry in decision_entries:
+            for cb in entry.get("clinical_basis", []):
+                src = cb.get("source", "")
+                if src and src not in sources_seen:
+                    sources_seen.add(src)
+                    lines.append(f"  - 参考来源: {src}")
+
+        # ── Confidence stats from events ──
         if events:
-            # Helper to read from dict or object (backward compat)
             def _ev(e, attr, default=None):
                 return e.get(attr, default) if isinstance(e, dict) else getattr(e, attr, default)
 
-            total_events = len(events)
             nlos_count = sum(1 for e in events if _ev(e, 'rule_markers', {}).get("nlos_flag") or
                            _ev(e, 'event_type') == "nlos_occlusion")
             low_conf_count = sum(1 for e in events if _ev(e, 'event_type') == "low_confidence")
             conflict_count = sum(1 for e in events if _ev(e, 'event_type') == "modality_conflict")
 
-            # Average confidence from events that have it (dict: top-level keys; object: .state attr)
-            def _wifi_conf(e):
-                if isinstance(e, dict):
-                    return e.get("wifi_confidence")
-                if hasattr(e, 'state') and e.state:
-                    return getattr(e.state, 'wifi_confidence', None)
-                return None
-
-            def _mmwave_conf(e):
-                if isinstance(e, dict):
-                    return e.get("mmwave_confidence")
-                if hasattr(e, 'state') and e.state:
-                    return getattr(e.state, 'mmwave_confidence', None)
-                return None
-
-            wifi_confs = [_wifi_conf(e) for e in events]
-            wifi_confs = [c for c in wifi_confs if c is not None]
-            mmwave_confs = [_mmwave_conf(e) for e in events]
-            mmwave_confs = [c for c in mmwave_confs if c is not None]
+            wifi_confs = []
+            mmwave_confs = []
+            for e in events:
+                wc = _ev(e, "wifi_confidence")
+                mc = _ev(e, "mmwave_confidence")
+                if wc is not None: wifi_confs.append(float(wc))
+                if mc is not None: mmwave_confs.append(float(mc))
 
             lines.append(f"\n  传感状态:")
             if nlos_count > 0:

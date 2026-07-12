@@ -18,7 +18,8 @@ def make_ep(level: str, days_ago: int = 0) -> EpisodeLog:
 
 
 class TestReportAgent:
-    def test_weekly_report(self):
+    @pytest.mark.asyncio
+    async def test_weekly_report(self):
         episodes = [
             make_ep("L4", 0),
             make_ep("L2", 1),
@@ -27,7 +28,7 @@ class TestReportAgent:
             make_ep("L0", 10),  # 超出 7 天
         ]
         agent = ReportAgent()
-        report = agent.generate_weekly_report(episodes)
+        report = await agent.generate_weekly_report(episodes)
         assert "本周" in report
         assert "L4" in report
 
