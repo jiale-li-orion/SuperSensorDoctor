@@ -28,23 +28,24 @@
     .tag-best-effort { background: #fef3c7; color: #92400e; }
     .fusion-rationale { font-size: 12px; color: var(--text-muted); margin-top: 4px; line-height: 1.4; }
     .fusion-empty { font-size: 13px; color: var(--text-muted); margin-top: 6px; }
-    .data-bar { background: white; border-radius: var(--radius); padding: 14px 20px; box-shadow: var(--shadow); border: 1px solid var(--border); display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
-    .data-bar .spacer { flex: 1; }
-    .pv-status { font-size: 13px; color: var(--text-secondary); }
-    .main-grid { display: grid; grid-template-columns: 1fr 320px; gap: 16px; }
-    #trend-chart { min-height: 260px; }
-    #trend-section select { padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px; background: white; }
-    .event-card { padding: 14px; border-radius: var(--radius); margin-bottom: 10px; border: 1px solid var(--border); }
-    .event-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+    .care-summary { display:grid; grid-template-columns:minmax(240px, .75fr) 1.8fr; margin-bottom:16px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); }
+    .care-conclusion { padding:18px 20px; border-right:1px solid var(--border); }
+    .care-eyebrow { color:var(--text-muted); font-size:11px; font-weight:700; margin-bottom:5px; }
+    .care-title { font-size:20px; font-weight:700; line-height:1.3; }
+    .care-detail { color:var(--text-secondary); font-size:12px; margin-top:5px; line-height:1.5; }
+    .care-flow { display:grid; grid-template-columns:repeat(4,1fr); align-items:center; padding:12px 16px; }
+    .flow-step { position:relative; padding:8px 14px; min-width:0; }
+    .flow-step:not(:last-child)::after { content:'›'; position:absolute; right:-3px; top:17px; color:var(--text-muted); font-size:18px; }
+    .flow-step span { display:block; color:var(--text-muted); font-size:10px; font-weight:700; }
+    .flow-step strong { display:block; margin-top:3px; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
     .dot.hr { background: #ef4444; } .dot.temp { background: #f97316; } .dot.fall { background: #991b1b; } .dot.rr { background: #8b5cf6; } .dot.conflict { background: #d946ef; } .dot.other { background: var(--text-muted); }
     @media (max-width:1024px) { .vitals-grid { grid-template-columns: repeat(3,1fr); } .main-grid { grid-template-columns: 1fr; } }
-    @media (max-width:768px) { .vitals-grid { grid-template-columns: repeat(2,1fr); } }
+    @media (max-width:768px) { .vitals-grid { grid-template-columns: repeat(2,1fr); } .care-summary { grid-template-columns:1fr; } .care-conclusion { border-right:0; border-bottom:1px solid var(--border); } .care-flow { grid-template-columns:repeat(2,1fr); } .flow-step:nth-child(2)::after { display:none; } }
     @media (max-width:480px) { 
         .vitals-grid { grid-template-columns: 1fr; } 
-        .data-bar { flex-direction: column; align-items: stretch; }
-        .data-bar .spacer { display: none; }
-        .data-bar .btn { justify-content: center; }
+        .onboarding { padding:24px 20px; margin-top:18px; }
+        .onboarding h2 { font-size:20px; }
         #trend-section .card-header { flex-direction: column; align-items: flex-start; gap: 8px; }
         #trend-section .filter-bar { width: 100%; }
         #trend-section select { flex: 1; }
@@ -52,47 +53,44 @@
 </style>
 {% endblock %}
 {% block content %}
-<!-- Data Loading Controls -->
-<div class="data-bar mb-16" id="data-bar">
-    <div>
-      <button id="btn-load-pv" class="btn btn-primary" onclick="loadPortableV2()">
-        <i data-lucide="radio" style="width:14px;height:14px;"></i> 加载 portable_v2 真实数据
-      </button>
+<section class="care-summary" id="care-summary" {% if not has_data %}style="display:none;"{% endif %} aria-live="polite">
+    <div class="care-conclusion">
+        <div class="care-eyebrow">CURRENT CARE STATE</div>
+        <div class="care-title" id="care-title">正在形成结论</div>
+        <div class="care-detail" id="care-detail">读取最新感知窗口与证据链。</div>
     </div>
-    <div id="pv-status" class="pv-status"></div>
-    <div class="spacer"></div>
-    <button class="btn btn-secondary" id="btn-load-data" onclick="loadTeamData()">
-        <i data-lucide="database" style="width:14px;height:14px;"></i> 加载团队数据
-    </button>
-</div>
+    <div class="care-flow" aria-label="看护证据闭环">
+        <div class="flow-step"><span>01 SENSING</span><strong id="flow-sensing">等待数据</strong></div>
+        <div class="flow-step"><span>02 BASELINE</span><strong id="flow-baseline">等待计算</strong></div>
+        <div class="flow-step"><span>03 FUSION</span><strong id="flow-fusion">等待裁决</strong></div>
+        <div class="flow-step"><span>04 ACTION</span><strong id="flow-action">静默记录</strong></div>
+    </div>
+</section>
 
         <!-- Empty State (onboarding) when no data -->
-        {% if total_windows == 0 and replay_count == 0 %}
+        {% if not has_data %}
         <div class="onboarding" id="onboarding">
-            <h2>欢迎使用 SuperSenseDoctor</h2>
-            <p>多模态感知数据融合看护系统已就绪。请选择数据来源开始监测。</p>
-            <div class="btn-group">
-                <button class="btn btn-hero" onclick="loadPortableV2()">📡 加载 portable_v2 真实数据</button>
-                <button class="btn btn-hero-outline" onclick="loadTeamData()">📂 加载团队真实数据</button>
-            </div>
+            <h2>SuperSenseDoctor 正在启动</h2>
+            <p>多模态传感数据融合看护系统。首次启动时自动创建示例数据和诊断记录。</p>
         </div>
         {% endif %}
 
         <!-- Trend Chart Section (ECharts) -->
-        <div class="card mb-16" id="trend-section" {% if total_windows == 0 and replay_count == 0 %}style="display:none;"{% endif %}>
+        <div class="card mb-16" id="trend-section" {% if not has_data %}style="display:none;"{% endif %}>
             <div class="card-header">
                 <h2>趋势</h2>
                 <div class="filter-bar">
                     <select id="trend-metric" onchange="loadTrend()">
-                        <option value="hr">❤️ HR</option>
-                        <option value="rr">🫁 RR</option>
-                        <option value="temp">🌡️ 体温</option>
+                        <option value="hr">心率 HR</option>
+                        <option value="rr">呼吸 RR</option>
+                        <option value="temp">体温</option>
                     </select>
                     <select id="trend-range" onchange="loadTrend()">
                         <option value="15m">15 分钟</option>
                         <option value="1h">1 小时</option>
                         <option value="6h">6 小时</option>
                         <option value="24h">24 小时</option>
+                        <option value="all">全部数据</option>
                     </select>
                     <label style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:4px;">
                         <input type="checkbox" id="trend-show-pm" onchange="loadTrend()"> 显示每模态
@@ -106,10 +104,10 @@
         </div>
 
         <!-- Vital Signs Cards -->
-        <div class="vitals-grid" id="vitals-grid" {% if total_windows == 0 and replay_count == 0 %}style="display:none;"{% endif %}>
+        <div class="vitals-grid" id="vitals-grid" {% if not has_data %}style="display:none;"{% endif %}>
             <!-- 1. HR Card (enhanced + per-modality) -->
             <div class="vital-card" id="card-hr">
-                <div class="icon">❤️</div>
+                <div class="icon"><i data-lucide="heart-pulse"></i></div>
                 <div class="label">心率 HR</div>
                 <div class="value value-default" id="v-hr">--</div>
                 <div class="sub" id="v-hr-sub">
@@ -125,7 +123,7 @@
 
             <!-- 2. RR Card (per-modality) -->
             <div class="vital-card" id="card-rr">
-                <div class="icon">🫁</div>
+                <div class="icon"><i data-lucide="wind"></i></div>
                 <div class="label">呼吸率 RR</div>
                 <div class="value" id="v-rr">--</div>
                 <div class="sub" id="v-rr-sub">bpm</div>
@@ -138,7 +136,7 @@
 
             <!-- 3. Temp Card (enhanced) -->
             <div class="vital-card" id="card-temp">
-                <div class="icon">🌡️</div>
+                <div class="icon"><i data-lucide="thermometer"></i></div>
                 <div class="label">体温 TEMP</div>
                 <div class="value value-default" id="v-temp">--</div>
                 <div class="sub" id="v-temp-sub">
@@ -149,7 +147,7 @@
 
             <!-- 4. Sensor Confidence Card (enhanced with per-metric bars) -->
             <div class="vital-card" id="card-sensor">
-                <div class="icon">📡</div>
+                <div class="icon"><i data-lucide="radio-tower"></i></div>
                 <div class="label">传感置信度</div>
                 <div class="conf-bar-row">
                     <span class="conf-bar-label">WiFi</span>
@@ -185,7 +183,7 @@
 
             <!-- 5. Activity State Card -->
             <div class="vital-card" id="card-activity">
-                <div class="icon">⚡</div>
+                <div class="icon"><i data-lucide="activity"></i></div>
                 <div class="label">活动状态</div>
                 <div class="value value-sm" id="v-activity">--</div>
                 <div class="sub" id="v-activity-sub"></div>
@@ -193,7 +191,7 @@
 
             <!-- 6. Fusion Verdict Card (portable_v2 sources) -->
             <div class="vital-card" id="card-fusion">
-                <div class="icon">🔗</div>
+                <div class="icon"><i data-lucide="git-merge"></i></div>
                 <div class="label">融合判决</div>
                 <div id="fusion-content">
                     <div class="fusion-empty">无融合数据</div>
@@ -207,7 +205,7 @@
         </div>
 
         <!-- Main Content Grid -->
-        <div class="main-grid">
+        <div class="main-grid" id="main-grid" {% if not has_data %}style="display:none;"{% endif %}>
             <!-- Left: Events -->
             <div class="section">
                 <h2>最近异常事件</h2>
@@ -232,13 +230,13 @@
                     <div class="stat-row"><span class="label">模态冲突</span><span class="val" id="stat-conflict">0</span></div>
                 </div>
                 <div style="margin-top:14px;">
-                    <a href="/report" class="btn btn-secondary">📊 查看周报</a>
+                    <a href="/report" class="btn btn-secondary"><i data-lucide="file-chart-column"></i>查看周报</a>
                 </div>
             </div>
         </div>
 
         <div class="footer" style="margin-top:24px;color:#94a3b8;font-size:12px;text-align:center;">
-            仅用于论文开发测试 · SuperSenseDoctor v0.1.0
+            本地边缘数据 · care support only · SuperSenseDoctor v0.1
         </div>
 
     <script>
@@ -295,7 +293,8 @@
     function renderFusion(fusion) {
         const container = document.getElementById('fusion-content');
         if (!fusion || !fusion.verdict || !fusion.verdict.dominant_modality || fusion.verdict.dominant_modality === 'none') {
-            container.innerHTML = '<div class="fusion-empty">无融合数据</div>';
+            const qualityEvent = fusion && fusion.checks && fusion.checks.quality_event;
+            container.innerHTML = `<div class="fusion-empty">${qualityEvent ? '测量质量不足，需复核' : '尚未形成融合结论'}</div>`;
             return;
         }
         const v = fusion.verdict;
@@ -330,6 +329,27 @@
             const q = data.quality || {};
             const fusion = data.fusion || {};
             const fv = fusion.verdict || {};
+
+            const historical = Math.abs(data.data_freshness_sec || 0) > 3600;
+            const qualityIssue = q.quality_event || fv.dominant_modality === 'none';
+            const action = data.latest_action || {};
+            const careTitle = document.getElementById('care-title');
+            const careDetail = document.getElementById('care-detail');
+            if (action.level && ['L3', 'L4'].includes(action.level)) {
+                careTitle.textContent = `${action.level} · 需要及时处置`;
+                careTitle.style.color = 'var(--danger)';
+            } else if (qualityIssue) {
+                careTitle.textContent = '测量质量需复核';
+                careTitle.style.color = 'var(--warn)';
+            } else {
+                careTitle.textContent = '当前未见高风险行动';
+                careTitle.style.color = 'var(--text)';
+            }
+            careDetail.textContent = `${historical ? '历史回放' : '实时窗口'} · ${data.source || 'unknown'} · ${String(data.timestamp || '').replace('T',' ').slice(0,19)}`;
+            document.getElementById('flow-sensing').textContent = data.has_per_modality ? 'WiFi + mmWave' : (data.source || '已接入');
+            document.getElementById('flow-baseline').textContent = Object.keys(bl).length ? '个人基线可用' : '基线数据不足';
+            document.getElementById('flow-fusion').textContent = qualityIssue ? '质量事件' : (fv.dominant_modality || '待裁决');
+            document.getElementById('flow-action').textContent = action.level ? `${action.level} · ${action.channel || 'none'}` : '仅入库展示';
 
             // HR
             const hrEl = document.getElementById('v-hr');
@@ -428,60 +448,27 @@
             if (vg) vg.style.display = '';
             const ts = document.getElementById('trend-section');
             if (ts) ts.style.display = '';
+            const dataBar = document.getElementById('data-bar');
+            if (dataBar) dataBar.style.display = '';
+            const careSummary = document.getElementById('care-summary');
+            if (careSummary) careSummary.style.display = '';
+            const mainGrid = document.getElementById('main-grid');
+            if (mainGrid) mainGrid.style.display = '';
+            if (!trendChart) setTimeout(initTrendChart, 0);
 
         } catch(e) { /* ignore */ }
     }
 
     // ── portable_v2 data loading ──
 
-    async function loadPortableV2() {
-        const btn = document.getElementById('btn-load-pv');
-        const status = document.getElementById('pv-status');
-        btn.disabled = true;
-        btn.innerHTML = '<span class="btn-icon">⏳</span> 加载中...';
-
-        try {
-            const resp = await fetch('/api/data/load-portable-v2', { method: 'POST' });
-            const data = await resp.json();
-            status.textContent = `📡 portable_v2 加载中 (目标: ${data.windows_target || 2349} 窗口)...`;
-
-            // Poll progress
-            const poll = setInterval(async () => {
-                const sr = await fetch('/api/data/portable-v2-status');
-                const st = await sr.json();
-                if (st.loading) {
-                    status.textContent = `📡 已加载 ${st.windows_loaded}/${st.windows_target} 个窗口...`;
-                } else {
-                    clearInterval(poll);
-                    status.textContent = `✅ portable_v2 加载完成: ${st.windows_loaded} 个窗口`;
-                    btn.innerHTML = '<span class="btn-icon">📡</span> 重新加载 portable_v2 数据';
-                    btn.disabled = false;
-                    location.reload();  // refresh whole dashboard to show new data
-                }
-            }, 500);
-        } catch (e) {
-            status.textContent = '❌ 加载失败: ' + e.message;
-            btn.innerHTML = '<span class="btn-icon">📡</span> 加载 portable_v2 真实数据';
-            btn.disabled = false;
-        }
-    }
-
-    // ── Load team data ──
-    async function loadTeamData() {
-        const btn = document.getElementById('btn-load-data');
-        btn.disabled = true;
-        btn.textContent = '加载中...';
-        try {
-            const resp = await fetch('/api/data/load-team-data', { method: 'POST' });
-            const data = await resp.json();
-            await pollVitals();
-            // Reload page to get fresh stats/events
-            location.reload();
-        } catch(e) {
-            console.error('Load data failed:', e);
-            btn.disabled = false;
-            btn.textContent = '📂 加载团队数据';
-        }
+    function setPortableStatus(message, tone = '') {
+        ['pv-status', 'onboarding-status'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.textContent = message;
+                el.style.color = tone === 'error' ? 'var(--danger)' : tone === 'ok' ? 'var(--accent)' : 'var(--text-secondary)';
+            }
+        });
     }
 
     // ── Initial render ──
