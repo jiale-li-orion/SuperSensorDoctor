@@ -1,5 +1,6 @@
 """Report Agent — 周报生成 + 自然语言 Q&A"""
 
+import asyncio
 import json
 from datetime import datetime, timedelta
 from typing import Optional
@@ -160,9 +161,13 @@ class ReportAgent:
                     ChatMessage(role="system", content=REPORT_PROMPT),
                     ChatMessage(role="user", content=json.dumps(context, ensure_ascii=False, indent=2, default=str)),
                 ]
-                resp = await llm_provider.chat(messages)
+                resp = await asyncio.wait_for(
+                    llm_provider.chat(messages), timeout=10
+                )
                 if resp and resp.content:
                     return resp.content.strip()
+            except asyncio.TimeoutError:
+                pass  # LLM timed out, fall through to rule-based
             except Exception:
                 pass  # fall through to rule-based
 
