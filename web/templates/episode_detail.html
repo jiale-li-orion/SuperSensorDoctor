@@ -43,7 +43,7 @@
             <h1>诊断详情</h1>
             <div class="text-muted text-sm mt-8">
                 {% set et = health_event.event_type if health_event else episode.episode_id %}
-                {{ et }} · {{ episode.start_time[:19] if episode.start_time else '—' }}
+                {{ et | event_label }} · {{ episode.start_time[:19] if episode.start_time else '—' }}
             </div>
         </div>
         <div style="text-align:right;">

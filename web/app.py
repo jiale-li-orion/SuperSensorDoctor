@@ -40,6 +40,41 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 import markdown as md_lib
 templates.env.filters["markdown"] = lambda t: md_lib.markdown(t, extensions=["nl2br"]) if t else ""
 
+# Event type to Chinese label mapping (shared across templates)
+_EVENT_LABELS = {
+    "hr_abnormal": "心率异常",
+    "rr_bradypnea": "呼吸过缓",
+    "rr_tachypnea": "呼吸急促",
+    "rr_baseline_deviation": "RR基线偏离",
+    "temp_abnormal": "体温异常",
+    "fall_detected": "跌倒",
+    "fall_no_physiological_change": "跌倒（无生理变化）",
+    "low_confidence": "低置信度",
+    "nlos_occlusion": "NLOS遮挡",
+    "modality_conflict": "模态冲突",
+}
+_EVENT_COLORS = {
+    "hr_abnormal": "#ef4444",
+    "rr_bradypnea": "#8b5cf6",
+    "rr_tachypnea": "#f97316",
+    "rr_baseline_deviation": "#8b5cf6",
+    "temp_abnormal": "#f97316",
+    "fall_detected": "#991b1b",
+    "fall_no_physiological_change": "#991b1b",
+    "low_confidence": "#94a3b8",
+    "nlos_occlusion": "#f59e0b",
+    "modality_conflict": "#d946ef",
+}
+
+def _event_label(t: str) -> str:
+    return _EVENT_LABELS.get(t, t or "未知")
+
+def _event_color(t: str) -> str:
+    return _EVENT_COLORS.get(t, "#94a3b8")
+
+templates.env.filters["event_label"] = _event_label
+templates.env.filters["event_color"] = _event_color
+
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 

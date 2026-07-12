@@ -121,22 +121,24 @@ function renderEpisodes(episodes, total, page) {
     episodes.forEach(ep => {
         const dec = ep.decision || {};
         const level = dec.level || 'L0';
-        const label = dec.label || '';
         const interp = dec.event_interpretation || '';
         const et = ep.health_event_type || ep.event_id?.split('_')[0] || '?';
         const trigger = ep.health_trigger || ep.event_id || '';
         const act = ep.action?.channel || '—';
+        const chMap = {none:'—', screen:'屏幕', family_push:'家属', emergency:'紧急'};
         const ts = ep.start_time ? ep.start_time.slice(0,16).replace('T',' ') : '';
+        const ev = eventInfo(et);
         const badgeCls = level === 'L0' ? 'ok' : level === 'L1' ? 'warn' : level === 'L2' ? 'warn' : 'danger';
-        html += `<tr class="episode-row" onclick="window.location='/episode/${ep.episode_id}'">
+        html += `<tr class="episode-row" onclick="window.location='/episode/${ep.episode_id}'" style="cursor:pointer;">
             <td><span class="badge badge-${badgeCls}">${level}</span></td>
-            <td><span class="text-sm">${et}</span></td>
-            <td><span class="text-sm text-muted" style="max-width:240px;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${trigger}">${trigger}</span></td>
-            <td><span class="text-sm text-muted">${act}</span></td>
-            <td><span class="text-xs text-muted">${ts}</span></td>
-            <td><span class="status-dot ${level === 'L4' ? 'danger' : level === 'L0' ? 'ok' : 'warn'}"></span></td>
-            <td><a href="/episode/${ep.episode_id}" class="text-sm" style="color:#2563eb;">详情 →</a></td>
+            <td><span class="flex gap-4" style="align-items:center;"><span class="status-dot" style="background:${ev.color};display:inline-block;width:8px;height:8px;border-radius:50%;"></span><span style="font-size:13px;">${ev.label}</span></span></td>
+            <td><span class="text-xs text-muted" style="max-width:220px;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${trigger}">${interp || trigger}</span></td>
+            <td><span class="text-xs text-muted">${chMap[act] || act}</span></td>
+            <td><span class="text-xs text-muted" style="white-space:nowrap;">${ts}</span></td>
+            <td><span class="status-dot ${level === 'L4' ? 'danger' : level === 'L0' ? 'ok' : 'warn'}" style="display:inline-block;"></span></td>
+            <td><a href="/episode/${ep.episode_id}" class="text-xs" style="color:var(--info);text-decoration:none;font-weight:500;">详情 →</a></td>
         </tr>`;
+    });
     });
     tbody.innerHTML = html;
 

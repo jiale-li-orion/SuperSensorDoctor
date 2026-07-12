@@ -104,12 +104,12 @@
         <div class="level-bar">
             {% set et_total = [event_type_breakdown[0]['count'] if event_type_breakdown else 1, 1] | max %}
             {% for item in event_type_breakdown[:8] %}
-            <div class="level-seg" style="width:{{ (item.count / et_total * 100)|round(1) }}%;background:{{ loop.cycle('#3b82f6','#8b5cf6','#f97316','#ef4444','#22c55e','#eab308','#d946ef','#6366f1') }};" title="{{ item.type }}: {{ item.count }}"></div>
+            <div class="level-seg" style="width:{{ (item.count / et_total * 100)|round(1) }}%;background:{{ loop.cycle('#3b82f6','#8b5cf6','#f97316','#ef4444','#22c55e','#eab308','#d946ef','#6366f1') }};" title="{{ item.type | event_label }}: {{ item.count }}"></div>
             {% endfor %}
         </div>
         {% for item in event_type_breakdown[:10] %}
         <div class="event-type-row">
-            <span>{{ item.type }}</span>
+            <span>{{ item.type | event_label }}</span>
             <span class="fw-600">{{ item.count }} 次</span>
         </div>
         {% endfor %}

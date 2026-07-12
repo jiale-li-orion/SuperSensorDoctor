@@ -481,12 +481,8 @@
     })();
 
     function getEventDot(type) {
-        if (type.startsWith('hr')) return 'dot hr';
-        if (type.startsWith('temp')) return 'dot temp';
-        if (type.startsWith('fall')) return 'dot fall';
-        if (type.startsWith('rr')) return 'dot rr';
-        if (type.startsWith('modality')) return 'dot conflict';
-        return 'dot other';
+        const e = eventInfo(type);
+        return `<span class="status-dot" style="background:${e.color};display:inline-block;margin-right:6px;"></span>`;
     }
 
     function getEventLevel(ep) {
@@ -497,7 +493,7 @@
     function renderEvents(episodes) {
         const container = document.getElementById('events-container');
         if (!episodes || episodes.length === 0) {
-            container.innerHTML = '<div class="empty-state">暂无异常事件</div>';
+            container.innerHTML = '<div class="empty-state" style="padding:32px 14px;color:var(--text-muted);text-align:center;">暂无异常事件</div>';
             return;
         }
         let html = '';
@@ -505,17 +501,22 @@
             const d = ep.decision || {};
             const level = d.level || 'L0';
             const interp = d.event_interpretation || d.explanation || '';
+            const eventType = ep.health_event_type || (ep.event_id ? ep.event_id.split('_').slice(0,-1).join('_') : 'unknown');
             const ts = ep.start_time ? (ep.start_time.slice(0,10) + ' ' + ep.start_time.slice(11,16)) : '';
-            const badgeCls = level.replace('L','').replace('0','ok').replace('1','warn').replace('2','warn').replace('3','danger').replace('4','danger');
+            const badgeCls = level === 'L0' ? 'badge-ok' : level === 'L1' ? 'badge-warn' : level === 'L2' ? 'badge-warn' : 'badge-danger';
+            const ev = eventInfo(eventType);
             html += `
-                <div class="event-card">
-                    <div class="event-header">
-                        <div class="event-type"><span class="dot ${getEventDot('hr_abnormal')}"></span>${d.label || level}</div>
-                        <div class="event-time">${ts} <span class="badge badge-${badgeCls}">${level}</span></div>
+                <div class="event-card" style="padding:12px 14px;border-radius:var(--radius);border:1px solid var(--border);margin-bottom:8px;">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <span class="status-dot" style="background:${ev.color};display:inline-block;width:8px;height:8px;border-radius:50%;flex-shrink:0;"></span>
+                            <span style="font-size:13px;font-weight:600;">${ev.label}</span>
+                            <span class="badge ${badgeCls}" style="font-size:11px;">${level}</span>
+                        </div>
+                        <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">${ts}</span>
                     </div>
-                    <div class="event-body">${interp || '—'}</div>
-                    <div class="event-tags"></div>
-                    <a class="event-link" href="/episode/${ep.episode_id || ''}">查看完整诊断 →</a>
+                    <div style="margin-top:4px;font-size:12px;color:var(--text-secondary);line-height:1.5;">${interp || '—'}</div>
+                    <div style="margin-top:4px;"><a href="/episode/${ep.episode_id || ''}" style="font-size:12px;color:var(--info);text-decoration:none;font-weight:500;">查看详情 →</a></div>
                 </div>
             `;
         });

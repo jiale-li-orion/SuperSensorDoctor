@@ -354,6 +354,27 @@
         updateTimestamp();
         pollConnection();
 
+        // Event type helpers (available to all templates)
+        const EVENT_TYPES = {
+            hr_abnormal: { label: '心率异常', icon: '❤️', color: '#ef4444', badge: 'badge-danger' },
+            rr_bradypnea: { label: '呼吸过缓', icon: '🫁', color: '#8b5cf6', badge: 'badge-warn' },
+            rr_tachypnea: { label: '呼吸急促', icon: '🫁', color: '#f97316', badge: 'badge-danger' },
+            rr_baseline_deviation: { label: 'RR基线偏离', icon: '📊', color: '#8b5cf6', badge: 'badge-warn' },
+            temp_abnormal: { label: '体温异常', icon: '🌡️', color: '#f97316', badge: 'badge-warn' },
+            fall_detected: { label: '跌倒', icon: '⚠️', color: '#991b1b', badge: 'badge-danger' },
+            fall_no_physiological_change: { label: '跌倒(无生理变化)', icon: '⚠️', color: '#991b1b', badge: 'badge-warn' },
+            low_confidence: { label: '低置信度', icon: '📡', color: '#94a3b8', badge: 'badge-neutral' },
+            nlos_occlusion: { label: 'NLOS遮挡', icon: '🚧', color: '#f59e0b', badge: 'badge-warn' },
+            modality_conflict: { label: '模态冲突', icon: '🔗', color: '#d946ef', badge: 'badge-danger' },
+        };
+        function eventInfo(type) {
+            return EVENT_TYPES[type] || { label: type || '未知', icon: '❓', color: '#94a3b8', badge: 'badge-neutral' };
+        }
+        function eventHTML(type, detail) {
+            const e = eventInfo(type);
+            return `<span class="flex gap-4"><span class="status-dot" style="background:${e.color};display:inline-block;"></span>${e.label}</span>`;
+        }
+
         // Z-score helpers (available to all templates)
         function zColor(z) {
             if (z === null || z === undefined) return '#94a3b8';
