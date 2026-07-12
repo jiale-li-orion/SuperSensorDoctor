@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}SuperSenseDoctor{% endblock %} — 智慧看护工作站</title>
-    <link rel="stylesheet" href="/static/echarts.min.js" as="script">
+    <link rel="preload" href="/static/echarts.min.js" as="script">
     <style>
         /* ═══════════════════════════════════════════════
            SuperSenseDoctor Design System v1
@@ -218,11 +218,15 @@
             .topnav-info span.resident { display: none; }
         }
         @media (max-width: 480px) {
-            .topnav-inner { gap: 8px; }
+            .topnav { padding: 0 12px; }
+            .topnav-inner { height: auto; min-height: 52px; gap: 6px; flex-wrap: wrap; padding: 8px 0 6px; }
+            .topnav-brand { flex: 1; }
             .topnav-brand small { display: none; }
-            .topnav-info { gap: 6px; }
-            .topnav-links a { padding: 4px 6px; font-size: 11px; }
-            .topnav-info span.resident { display: none; }
+            .topnav-info { margin-left: 0; gap: 4px; }
+            .topnav-info .conn-status, #nav-last-update { display: none; }
+            .topnav-links { order: 3; width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); }
+            .topnav-links a { padding: 6px 4px; font-size: 11px; text-align: center; white-space: nowrap; }
+            .topnav-links a svg { vertical-align: -2px; }
         }
         @media (prefers-reduced-motion) {
             .drawer { transition: none; }
@@ -257,7 +261,7 @@
                     <span id="conn-label">在线</span>
                 </span>
                 <span id="nav-last-update"></span>
-                <button class="btn btn-ghost btn-sm" onclick="toggleDrawer()" data-tooltip="系统方法与边界">
+                <button class="btn btn-ghost btn-sm" onclick="toggleDrawer()" data-tooltip="系统方法与边界" aria-label="打开系统方法与边界">
                     <i data-lucide="book-open" style="width:14px;height:14px;"></i>
                 </button>
             </div>
@@ -271,10 +275,10 @@
 
     <!-- ═══ Methodology Drawer ═══ -->
     <div class="drawer-overlay" id="drawer-overlay" onclick="toggleDrawer()"></div>
-    <div class="drawer" id="drawer">
+    <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" aria-hidden="true">
         <div class="drawer-header">
-            <h3>方法与边界</h3>
-            <button class="drawer-close" onclick="toggleDrawer()">✕</button>
+            <h3 id="drawer-title">方法与边界</h3>
+            <button class="drawer-close" onclick="toggleDrawer()" aria-label="关闭方法与边界"><i data-lucide="x"></i></button>
         </div>
         <div class="drawer-body">
             <h4>系统架构</h4>
@@ -300,7 +304,7 @@
             <h4>安全边界</h4>
             <p>本系统提供 care support，不构成医学诊断、治疗建议或用药建议。L0-L4 分级为项目策略，不应用于独立临床决策。</p>
         </div>
-    </div>
+    </aside>
 
     <!-- ═══ Scripts ═══ -->
     <script src="/static/lucide.min.js"></script>
@@ -311,9 +315,14 @@
 
         // Drawer toggle
         function toggleDrawer() {
-            document.getElementById('drawer').classList.toggle('open');
+            const drawer = document.getElementById('drawer');
+            drawer.classList.toggle('open');
+            drawer.setAttribute('aria-hidden', drawer.classList.contains('open') ? 'false' : 'true');
             document.getElementById('drawer-overlay').classList.toggle('open');
         }
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && document.getElementById('drawer').classList.contains('open')) toggleDrawer();
+        });
 
         // Update connection status
         async function pollConnection() {

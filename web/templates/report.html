@@ -3,7 +3,7 @@
 {% block head_extra %}
 <style>
     .report-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-    .stat-card { text-align: center; }
+    .stat-card { text-align: center; padding: 22px 18px; }
     .stat-card .num { font-size: 32px; font-weight: 700; }
     .stat-card .lbl { font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
     .level-bar { height: 12px; background: #f1f5f9; border-radius: 6px; overflow: hidden; display: flex; }
@@ -20,7 +20,7 @@
 {% endblock %}
 {% block content %}
 <div class="mb-16 flex flex-wrap">
-    <h1>📊 周报洞察</h1>
+    <h1>周报洞察</h1>
     <span class="text-muted text-sm ml-auto" id="report-ref-date">{{ reference_date }}</span>
 </div>
 
@@ -128,7 +128,7 @@
 </div>
 
 <div style="margin-top:16px;text-align:center;color:var(--text-muted);font-size:12px;" class="no-print">
-    <button class="btn btn-secondary btn-sm" onclick="window.print()">🖨️ 打印报告</button>
-    &nbsp; SuperSenseDoctor v0.1.0 — 仅用于论文开发测试
+    <button class="btn btn-secondary btn-sm" onclick="window.print()"><i data-lucide="printer"></i>打印报告</button>
+    &nbsp; 本地边缘数据 · care support only
 </div>
 {% endblock %}

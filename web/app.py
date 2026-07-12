@@ -6,7 +6,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -41,6 +41,8 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
     """医生工作站首页"""
+    latest_window = query_latest_sensing_window("resident_01")
+    has_data = bool(latest_window)
     windows = query_recent_windows("resident_01", "heart_rate", 60)
     pending = query_pending_events()
     episodes = query_episodes_by_resident("resident_01", 20)
@@ -59,6 +61,7 @@ async def dashboard(request: Request):
 
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
+        "has_data": has_data,
         "total_windows": len(windows),
         "pending_events": len(pending),
         "total_episodes": len(episodes),
@@ -237,7 +240,7 @@ async def health():
     return {"status": "ok", "db": str(DB_PATH)}
 
 
-RANGE_MAP = {"15m": 15, "1h": 60, "6h": 360, "24h": 1440}
+RANGE_MAP = {"15m": 15, "1h": 60, "6h": 360, "24h": 1440, "all": None}
 
 
 @app.get("/api/trends")
@@ -248,7 +251,9 @@ async def api_trends(
     max_points: int = Query(600, le=1200),
 ):
     """时间序列趋势数据，含融合值、每模态估计、置信度、事件标记。"""
-    minutes = RANGE_MAP.get(range, 60)
+    if range not in RANGE_MAP:
+        raise HTTPException(status_code=422, detail="Unsupported trend range")
+    minutes = RANGE_MAP[range]
 
     # Reference timestamp = latest window (supports historical replay)
     ref = None
@@ -411,7 +416,9 @@ async def api_vitals_latest():
     engine = FusionEngine()
     fusion_hr = engine.fuse(state, "hr")
 
-    has_pm = state.hr_wifi is not None or state.rr_wifi is not None
+    has_pm = any(value is not None for value in (
+        state.hr_wifi, state.hr_mm, state.rr_wifi, state.rr_mm,
+    ))
 
     # Latest action
     latest_action = None
@@ -586,8 +593,10 @@ async def report_page(request: Request):
     ref_iso = ref_ts.isoformat()
 
     # Filter episodes to 7-day window
-    week_episodes = [ep for ep in episodes
-                     if str(ep.get("start_time", "")) >= week_ago]
+    week_episodes = [
+        ep for ep in episodes
+        if week_ago <= str(ep.get("start_time", "")) <= ref_iso
+    ]
 
     # Levels
     level_counts = {"L0": 0, "L1": 0, "L2": 0, "L3": 0, "L4": 0}
@@ -607,7 +616,7 @@ async def report_page(request: Request):
     events = []
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT * FROM health_events WHERE timestamp >= ? AND timestamp < ? ORDER BY timestamp DESC",
+            "SELECT * FROM health_events WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp DESC",
             (week_ago, ref_iso),
         ).fetchall()
     for r in rows:

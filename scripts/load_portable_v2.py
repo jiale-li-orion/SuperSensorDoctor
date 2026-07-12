@@ -113,9 +113,10 @@ async def load_portable_v2_csv(
         if progress_callback:
             progress_callback(count)
 
-        # Yield control every 100 rows to keep the event loop responsive
-        if count % 100 == 0:
-            await asyncio.sleep(0)
+        # SQLite on a Windows-mounted WSL workspace can make each batch costly.
+        # Yield frequently so progress and health endpoints stay responsive.
+        if count % 10 == 0:
+            await asyncio.sleep(0.001)
 
     return count
 

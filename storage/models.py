@@ -1,6 +1,7 @@
 """数据访问层 — 封装常用查询"""
 
 import json
+import math
 from datetime import datetime, timedelta
 from typing import Optional
 from storage.db import get_db
@@ -219,7 +220,7 @@ def query_portable_v2_windows(resident_id: str = "resident_01", limit: int = 100
 def query_trend_range(
     resident_id: str,
     reference: Optional[datetime] = None,
-    minutes: int = 60,
+    minutes: Optional[int] = 60,
     max_points: int = 1200,
 ) -> list[dict]:
     """Return sensing windows for trend charting, with forced sampling.
@@ -231,15 +232,22 @@ def query_trend_range(
     ref = reference or datetime.now()
     if ref.tzinfo is not None:
         ref = ref.replace(tzinfo=None)
-    threshold = (ref - timedelta(minutes=minutes)).isoformat()
     upper = ref.isoformat()
 
     with get_db() as conn:
-        rows = conn.execute("""
-            SELECT * FROM sensing_windows
-            WHERE resident_id=? AND timestamp >= ? AND timestamp < ?
-            ORDER BY timestamp
-        """, (resident_id, threshold, upper)).fetchall()
+        if minutes is None:
+            rows = conn.execute("""
+                SELECT * FROM sensing_windows
+                WHERE resident_id=? AND timestamp <= ?
+                ORDER BY timestamp
+            """, (resident_id, upper)).fetchall()
+        else:
+            threshold = (ref - timedelta(minutes=minutes)).isoformat()
+            rows = conn.execute("""
+                SELECT * FROM sensing_windows
+                WHERE resident_id=? AND timestamp >= ? AND timestamp <= ?
+                ORDER BY timestamp
+            """, (resident_id, threshold, upper)).fetchall()
 
     result = [_row_to_dict(r) for r in rows]
 
@@ -257,10 +265,18 @@ def query_trend_range(
 
     budget = max_points - len(keep_ids)
     if budget > 0 and normal:
-        step = max(1, len(normal) // budget)
+        step = max(1, math.ceil(len(normal) / budget))
         keep_ids.update(normal[i]["window_id"] for i in range(0, len(normal), step))
 
-    return [r for r in result if r["window_id"] in keep_ids]
+    sampled = [r for r in result if r["window_id"] in keep_ids]
+    if len(sampled) > max_points:
+        # Flagged windows have priority; cap deterministically if they alone
+        # exceed the rendering budget.
+        sample_step = math.ceil(len(sampled) / max_points)
+        sampled = sampled[::sample_step]
+        if sampled[-1]["window_id"] != result[-1]["window_id"]:
+            sampled[-1] = result[-1]
+    return sampled
 
 
 # ── Episodes (filtered, paginated) ──
@@ -286,8 +302,8 @@ def query_filtered_episodes(
         conditions.append("json_extract(e.decision, '$.level') = ?")
         params.append(level)
     if event_type:
-        conditions.append("e.event_id LIKE ?")
-        params.append(f"{event_type}%")
+        conditions.append("h.event_type = ?")
+        params.append(event_type)
     if from_dt:
         conditions.append("e.start_time >= ?")
         params.append(from_dt.isoformat())
@@ -304,9 +320,12 @@ def query_filtered_episodes(
     where = " AND ".join(conditions)
 
     with get_db() as conn:
-        count_row = conn.execute(
-            f"SELECT COUNT(*) as cnt FROM episode_logs e WHERE {where}", params
-        ).fetchone()
+        count_row = conn.execute(f"""
+            SELECT COUNT(*) as cnt
+            FROM episode_logs e
+            LEFT JOIN health_events h ON e.event_id = h.event_id
+            WHERE {where}
+        """, params).fetchone()
         total = count_row["cnt"] if count_row else 0
 
         rows = conn.execute(f"""
