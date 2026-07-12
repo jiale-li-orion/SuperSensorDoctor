@@ -31,6 +31,13 @@
 </div>
 {% else %}
 
+<!-- LLM生成的周报文本 -->
+{% if report_text %}
+<div class="card mb-16">
+    <div class="card-body" style="font-size:14px;line-height:1.8;white-space:pre-wrap;">{{ report_text }}</div>
+</div>
+{% endif %}
+
 <div class="report-grid mb-16">
     <div class="card stat-card">
         <div class="num" style="color:#22c55e;">{{ total_episodes }}</div>
@@ -117,18 +124,7 @@
 
 {% endif %}
 
-<div class="card mb-16">
-    <div class="card-header"><h2>系统状态</h2></div>
-    <div class="card-body">
-        <div class="stat-row"><span>Agent 层版本</span><span>v0.1.0</span></div>
-        <div class="stat-row"><span>融合引擎</span><span>FusionEngine (三步链式仲裁)</span></div>
-        <div class="stat-row"><span>基线策略</span><span>Personal Baseline (z_score > 2.0)</span></div>
-        <div class="stat-row"><span>参考时间窗口</span><span>{{ reference_date }} 回溯 7 天</span></div>
-    </div>
-</div>
-
 <div style="margin-top:16px;text-align:center;color:var(--text-muted);font-size:12px;" class="no-print">
     <button class="btn btn-secondary btn-sm" onclick="window.print()"><i data-lucide="printer"></i>打印报告</button>
-    &nbsp; 本地边缘数据 · care support only
 </div>
 {% endblock %}
