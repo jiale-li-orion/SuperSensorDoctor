@@ -116,21 +116,21 @@
     <div class="card-body">
         <div class="pm-row">
             <div class="pm-col">
-                <div class="h">❤️ HR</div>
+                <div class="h">❤️ 心率</div>
                 <div class="v" style="color:#dc2626;">{{ sensing.get('heart_rate', '—') }}</div>
                 <div class="text-sm text-muted">融合值</div>
-                <div class="text-xs text-muted mt-8">WiFi: {{ sensing.get('hr_wifi', '—') }} · mmWave: {{ sensing.get('hr_mm', '—') }}</div>
-                <div class="text-xs text-muted">HR conf: {{ sensing.get('hr_conf', '—') }} · 源: {{ sensing.get('hr_source', '—') }}</div>
+                <div class="text-xs text-muted mt-8">WiFi: {{ sensing.get('hr_wifi', '—') }} · 毫米波: {{ sensing.get('hr_mm', '—') }}</div>
+                <div class="text-xs text-muted">HR 置信度: {{ sensing.get('hr_conf', '—') }} · 源: {{ sensing.get('hr_source', '—') }}</div>
             </div>
             <div class="pm-col">
-                <div class="h">🫁 RR</div>
+                <div class="h">🫁 呼吸率</div>
                 <div class="v" style="color:#8b5cf6;">{{ sensing.get('respiration_rate', '—') }}</div>
                 <div class="text-sm text-muted">融合值</div>
-                <div class="text-xs text-muted mt-8">WiFi: {{ sensing.get('rr_wifi', '—') }} · mmWave: {{ sensing.get('rr_mm', '—') }}</div>
-                <div class="text-xs text-muted">RR conf: {{ sensing.get('rr_conf', '—') }} · 源: {{ sensing.get('rr_source', '—') }}</div>
+                <div class="text-xs text-muted mt-8">WiFi: {{ sensing.get('rr_wifi', '—') }} · 毫米波: {{ sensing.get('rr_mm', '—') }}</div>
+                <div class="text-xs text-muted">RR 置信度: {{ sensing.get('rr_conf', '—') }} · 源: {{ sensing.get('rr_source', '—') }}</div>
             </div>
             <div class="pm-col">
-                <div class="h">🌡️ TEMP</div>
+                <div class="h">🌡️ 体温</div>
                 <div class="v" style="color:#f97316;">{{ sensing.get('body_temp', '—') }}</div>
                 <div class="text-sm text-muted">红外</div>
                 <div class="text-xs text-muted mt-8">Thermal conf: {{ sensing.get('thermal_confidence', '—') }}</div>
@@ -139,7 +139,7 @@
                 <div class="h">📡 置信度</div>
                 <div class="v" style="font-size:18px;">{{ sensing.get('wifi_confidence', '—') }}</div>
                 <div class="text-sm text-muted">WiFi</div>
-                <div class="text-xs text-muted mt-8">mmWave: {{ sensing.get('mmwave_confidence', '—') }}</div>
+                <div class="text-xs text-muted mt-8">毫米波: {{ sensing.get('mmwave_confidence', '—') }}</div>
                 {% if sensing.get('nlos_flag') %}<div class="text-xs" style="color:var(--warn);">⚠ NLOS</div>{% endif %}
                 {% if sensing.get('quality_event') %}<div class="text-xs" style="color:var(--warn);">⚠ 质量事件</div>{% endif %}
             </div>
@@ -154,15 +154,15 @@
         <div class="value-group">
             <div class="value-item">
                 <div class="num" style="color:#dc2626;">{{ sensing.get('heart_rate', '—') }}</div>
-                <div class="lbl">HR (bpm)</div>
+                <div class="lbl">心率 (bpm)</div>
             </div>
             <div class="value-item">
                 <div class="num" style="color:#8b5cf6;">{{ sensing.get('respiration_rate', '—') }}</div>
-                <div class="lbl">RR (bpm)</div>
+                <div class="lbl">呼吸率 (bpm)</div>
             </div>
             <div class="value-item">
                 <div class="num" style="color:#f97316;">{{ sensing.get('body_temp', '—') }}</div>
-                <div class="lbl">Temp (°C)</div>
+                <div class="lbl">体温 (°C)</div>
             </div>
             <div class="value-item">
                 <div class="num" style="font-size:18px;">{{ sensing.get('wifi_confidence', '—') }}</div>
@@ -170,7 +170,7 @@
             </div>
             <div class="value-item">
                 <div class="num" style="font-size:18px;">{{ sensing.get('mmwave_confidence', '—') }}</div>
-                <div class="lbl">mmWave</div>
+                <div class="lbl">毫米波</div>
             </div>
         </div>
         {% if sensing.get('nlos_flag') %}<div class="mt-8 text-sm" style="color:var(--warn);">⚠ NLOS 遮挡中</div>{% endif %}
@@ -188,7 +188,7 @@
         <div class="flex flex-wrap" style="gap:8px;">
             {% for metric, result in {'hr':abs_ref.get('heart_rate',{}), 'rr':abs_ref.get('respiration_rate',{}), 'temp':abs_ref.get('body_temp',{})}.items() if result.get('status') == 'ok' %}
             <div class="pm-col" style="min-width:100px;">
-                <div class="h">{{ {'hr':'HR','rr':'RR','temp':'TEMP'}[metric] }}</div>
+                <div class="h">{{ {'hr':'心率','rr':'呼吸率','temp':'体温'}[metric] }}</div>
                 <div class="v" style="font-size:14px;">{{ result.value }}</div>
                 <div class="text-xs text-muted">{{ result.band }} (score {{ result.reference_score }})</div>
             </div>
@@ -212,7 +212,7 @@
         {% for metric, bl in pb.items() if bl is mapping %}
         <div class="basis-item">
             <span class="source-tag-sm">RESIDENT_HISTORY</span>
-            <strong>{{ {'hr':'HR','rr':'RR','temp':'TEMP'}.get(metric, metric) }}</strong>:
+            <strong>{{ {'hr':'心率','rr':'呼吸率','temp':'体温'}.get(metric, metric) }}</strong>:
             当前 {{ bl.value }}, 基线 {{ bl.mean }}±{{ bl.std }}, z={{ "%.2f"|format(bl.z_score) }}
         </div>
         {% endfor %}
@@ -250,7 +250,7 @@
         {% else %}
             <div class="chain-step flex">
                 <span class="step-num">⚡</span>
-                <div><strong>Reflex Arc</strong> — 快速反射路径，未调用 LLM 工具</div>
+                <div><strong>反射弧</strong> — 快速反射路径，未调用 LLM 工具</div>
             </div>
         {% endif %}
     </div>
@@ -271,7 +271,7 @@
             </div>
             <div class="info-item">
                 <div class="label">路径</div>
-                <div class="val">{{ '⚡ 反射弧' if episode.audit.get('reflex') else '🧠 LLM ReAct' }}</div>
+                <div class="val">{{ '⚡ 反射弧' if episode.audit.get('reflex') else '🧠 LLM 推理' }}</div>
             </div>
             <div class="info-item">
                 <div class="label">安全边界</div>

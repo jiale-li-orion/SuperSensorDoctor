@@ -126,7 +126,7 @@
                 <div class="icon"><i data-lucide="wind"></i></div>
                 <div class="label">呼吸率 RR</div>
                 <div class="value" id="v-rr">--</div>
-                <div class="sub" id="v-rr-sub">bpm</div>
+                <div class="sub" id="v-rr-sub">次/分</div>
                 <div id="v-rr-permodality" style="margin-top:4px;font-size:11px;color:#94a3b8;display:none;">
                     <span>WiFi: <strong id="v-rr-wifi">--</strong></span>
                     <span style="margin-left:8px;">mmWave: <strong id="v-rr-mm">--</strong></span>
@@ -566,7 +566,7 @@
             const wifi = pts.map(p => p[`${metric}_wifi`]);
             const mm = pts.map(p => p[`${metric}_mm`]);
 
-            const metricLabels = {hr: 'HR (bpm)', rr: 'RR (bpm)', temp: 'Temp (°C)'};
+            const metricLabels = {hr: '心率 (次/分)', rr: '呼吸率 (次/分)', temp: '体温 (°C)'};
             const metricColors = {hr: '#dc2626', rr: '#8b5cf6', temp: '#f97316'};
 
             const series = [{
