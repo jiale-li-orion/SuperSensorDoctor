@@ -339,3 +339,108 @@ def query_filtered_episodes(
         """, params + [limit, offset]).fetchall()
 
     return [_row_to_dict(r) for r in rows], total
+
+
+def seed_demo_data():
+    """If DB is empty, insert demo sensing windows + episode_logs so the
+    report and dashboard show data on first start without manual loading."""
+    from storage.db import get_db, DB_PATH
+    from pathlib import Path
+    import uuid
+
+    with get_db() as conn:
+        count = conn.execute("SELECT COUNT(*) as c FROM sensing_windows").fetchone()["c"]
+        if count > 0:
+            return False  # already has data
+
+        # ── 30 sensing windows ──
+        base_ts = datetime.now().replace(second=0, microsecond=0) - timedelta(hours=1)
+        window_ids = []
+        for i in range(30):
+            wid = f"demo_{uuid.uuid4().hex[:6]}"
+            window_ids.append(wid)
+            ts = (base_ts + timedelta(minutes=i * 2)).isoformat()
+            conn.execute("""INSERT INTO sensing_windows
+                (window_id, timestamp, resident_id, hr, rr, body_temp,
+                 wifi_conf, mmwave_conf, activity_state, nlos_flag, source, quality_event)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (wid, ts, "resident_01",
+                 70 + (i % 20), 16 + (i % 6), 36.5 + (i % 5) * 0.2,
+                 0.85, 0.75 if i % 5 else 0.3, "rest" if i % 3 else "walking",
+                 1 if i % 7 == 0 else 0, "seed", 1 if i % 11 == 0 else 0))
+
+        # ── Health events + episode_logs ──
+        demo_decisions = [
+            {
+                "level": "L4", "label": "emergency",
+                "event_interpretation": "HR=155 extreme, reflex arc triggered",
+                "clinical_basis": [
+                    {"type": "absolute_reference", "finding": "HR=155 in marked_high band", "source": "RCP_NEWS2_2017_REFERENCE"}
+                ],
+            },
+            {
+                "level": "L2", "label": "resident_alert",
+                "event_interpretation": "RR=24 vs personal baseline 19±2, z=2.5, resting position",
+                "clinical_basis": [
+                    {"type": "absolute_reference", "finding": "RR=24 in elevated 21-24 band", "source": "RCP_NEWS2_2017_REFERENCE"},
+                    {"type": "personal_baseline", "finding": "RR=24 vs baseline 19±2, z=2.5", "source": "RESIDENT_HISTORY"},
+                    {"type": "activity_context", "finding": "No activity explanation for elevated RR", "source": "ACTIVITY_CONTEXT"},
+                ],
+            },
+            {
+                "level": "L1", "label": "continuous_observation",
+                "event_interpretation": "HR deviation z=1.8, transient 60s, resolved",
+                "clinical_basis": [
+                    {"type": "personal_baseline", "finding": "HR z=1.8 from personal baseline", "source": "RESIDENT_HISTORY"},
+                    {"type": "persistence", "finding": "Only 60s; sustained deterioration not established", "source": "PROJECT_POLICY"},
+                ],
+            },
+            {
+                "level": "L3", "label": "family_notification",
+                "event_interpretation": "Sustained HR elevation z=3.2 over 12 min, activity context does not explain",
+                "clinical_basis": [
+                    {"type": "absolute_reference", "finding": "HR=135 in marked_high band", "source": "RCP_NEWS2_2017_REFERENCE"},
+                    {"type": "personal_baseline", "finding": "HR=135 vs baseline 72±3, z=3.2", "source": "RESIDENT_HISTORY"},
+                    {"type": "persistence", "finding": "Sustained 720s, persistent deterioration", "source": "PROJECT_POLICY"},
+                    {"type": "sensing_quality", "finding": "WiFi+mmWave consistent, reliable", "source": "SENSOR_FUSION"},
+                ],
+            },
+            {
+                "level": "L0", "label": "record_only",
+                "event_interpretation": "Slight HR rise during walking, normalized",
+                "clinical_basis": [
+                    {"type": "activity_context", "finding": "Walking explains transient HR rise", "source": "ACTIVITY_CONTEXT"},
+                ],
+            },
+        ]
+
+        event_ts = base_ts
+        for d in demo_decisions:
+            eid = f"seed_{uuid.uuid4().hex[:8]}"
+            et = {"L4": "hr_abnormal", "L2": "rr_baseline_deviation", "L1": "hr_abnormal",
+                  "L3": "hr_abnormal", "L0": "hr_abnormal"}[d["level"]]
+            conn.execute("""INSERT OR IGNORE INTO health_events
+                (event_id, window_id, event_type, timestamp, trigger_reason, handled)
+                VALUES (?,?,?,?,?,?)""",
+                (eid, window_ids[0], et, event_ts.isoformat(), d["event_interpretation"][:80], 1))
+            conn.execute("""INSERT INTO episode_logs
+                (episode_id, event_id, resident_id, start_time, end_time,
+                 evidence, decision, action, audit)
+                VALUES (?,?,?,?,?,?,?,?,?)""",
+                (f"ep_{uuid.uuid4().hex[:8]}", eid, "resident_01",
+                 event_ts.isoformat(), (event_ts + timedelta(seconds=30)).isoformat(),
+                 json.dumps({"sensing_summary": {
+                     "heart_rate": 70 + int(d["level"][1]) * 10,
+                     "respiration_rate": 16 + int(d["level"][1]) * 2,
+                     "body_temp": 36.5, "wifi_confidence": 0.85, "mmwave_confidence": 0.75,
+                     "hr_wifi": 68 + int(d["level"][1]) * 10 if d["level"] in ("L3","L4") else None,
+                     "hr_mm": 72 + int(d["level"][1]) * 10 if d["level"] in ("L3","L4") else None,
+                     "nlos_flag": False, "activity_state": "rest",
+                 }}),
+                 json.dumps(d), json.dumps({"channel": "none" if d["level"] in ("L0","L1") else
+                                              "screen" if d["level"] == "L2" else
+                                              "family_push" if d["level"] == "L3" else "emergency"}),
+                 json.dumps({"tools_called": ["nurse_rule:seed"], "step_count": 0})))
+            event_ts += timedelta(minutes=5)
+
+        return True  # data seeded

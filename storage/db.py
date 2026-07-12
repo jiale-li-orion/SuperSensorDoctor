@@ -83,6 +83,12 @@ def get_db() -> sqlite3.Connection:
                         pass
                 conn.close()
                 _init_done = True
+                # Seed demo data on first init (lazy import to avoid cycle)
+                try:
+                    from storage.models import seed_demo_data
+                    seed_demo_data()
+                except Exception:
+                    pass  # seeding is best-effort
 
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
