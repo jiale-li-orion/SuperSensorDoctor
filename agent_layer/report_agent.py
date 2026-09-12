@@ -22,6 +22,10 @@ from typing import Any, Optional
 from agent_layer.state_objects import EpisodeLog
 from agent_layer.llm_provider import LLMProvider, ChatMessage
 from agent_layer.validation_results import validation_block
+from agent_layer.report_data import (
+    DEFAULT_WINDOW_DAYS,
+    load_report_window,
+)
 
 
 # ── Display vocabulary ─────────────────────────────────────────────────────
@@ -1204,6 +1208,45 @@ class ReportAgent:
     ) -> dict:
         """Public accessor for the canonical evidence context."""
         return build_report_context(episodes, events, reference_ts, lang=lang)
+
+    def load_window(
+        self,
+        resident_id: str,
+        reference_ts: Optional[datetime] = None,
+        window_days: int = DEFAULT_WINDOW_DAYS,
+    ):
+        """Load the report window straight from storage.
+
+        Prefer this over handing the agent a pre-sliced episode list: the
+        window is then selected by time range, so a busy week is never
+        truncated by a row cap. See ``agent_layer.report_data``.
+        """
+        return load_report_window(resident_id, reference_ts, window_days)
+
+    async def generate_weekly_report_for(
+        self,
+        resident_id: str,
+        events: Optional[list] = None,
+        llm_provider: Optional[LLMProvider] = None,
+        reference_ts: Optional[datetime] = None,
+        timeout: float = 10.0,
+        lang: str = DEFAULT_LANG,
+        window_days: int = DEFAULT_WINDOW_DAYS,
+    ) -> str:
+        """Generate the report for a resident, loading its own data window.
+
+        Convenience wrapper over :meth:`generate_weekly_report` for callers
+        that should not be responsible for selecting the time window.
+        """
+        window = self.load_window(resident_id, reference_ts, window_days)
+        return await self.generate_weekly_report(
+            window.episodes,
+            events=events,
+            llm_provider=llm_provider,
+            reference_ts=window.reference_ts,
+            timeout=timeout,
+            lang=lang,
+        )
 
     async def generate_weekly_report(
         self,

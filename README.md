@@ -98,23 +98,64 @@ Comfast WU785AC (WiFi BFI) · Texas Instruments AWR1843 (mmWave radar) · MLX906
 
 | | |
 |---|---|
-| Python | **3.12** (the code uses `list[str]` / `X \| None` syntax) |
-| OS | Linux / **WSL recommended**. Native Windows works, but the test suite deletes a shared SQLite file and then hits `WinError 32` file locking — see *Known issues* |
-| Hardware | **None.** The sensing layer replays configured CSV / derived files; no radio hardware is needed to run the Agent layer |
+| Python | **3.12** (the code uses `list[str]` / `X \| None` syntax). Windows: `py -3.12`, Linux/WSL: `python3.12` |
+| OS | Linux, **WSL (recommended)**, or Windows 10/11 with PowerShell |
+| Git | Any recent version |
+| Hardware | **None.** The sensing layer replays configured CSV / derived files — no WiFi card, radar, or thermal array is needed to run the Agent layer |
+| LLM key | **Optional.** Without it the report falls back to the deterministic renderer and everything still runs |
 
-### 1. Install
+---
+
+### Step 1 — Clone
+
+Both transports work; pick one.
+
+**SSH** (needs an SSH key registered on GitHub):
 
 ```bash
-cd "/mnt/c/Users/29461/Desktop/My Workspace/ubicomp"
+git clone git@github.com:jiale-li-orion/SuperSensorDoctor.git
+cd SuperSensorDoctor
+```
 
-python3 --version            # expect 3.12.x
+**HTTPS** (works everywhere, may prompt for a username/token):
+
+```bash
+git clone https://github.com/jiale-li-orion/SuperSensorDoctor.git
+cd SuperSensorDoctor
+```
+
+> The checkout directory in this workspace is named `ubicomp/`. Substitute your
+> own path wherever the commands below say `<repo>`.
+
+---
+
+### Step 2 — Bootstrap and run
+
+<details open>
+<summary><b>WSL / Linux (bash)</b></summary>
+
+```bash
+cd <repo>
+
+# 1. Confirm the interpreter
+python3 --version                 # expect 3.12.x
+
+# 2. Create and activate a virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
 
+# 3. Install dependencies
+python -m pip install --upgrade pip
 pip install -r requirements.txt
+
+# 4. Optional: enable live LLM triage
+export DEEPSEEK_API_KEY=sk-...
+
+# 5. Run
+python main.py                    # → http://127.0.0.1:8000
 ```
 
-If `python3 -m venv` reports a missing `ensurepip` / `venv` module:
+If step 2 fails with `No module named venv` / `ensurepip is not available`:
 
 ```bash
 sudo apt update && sudo apt install -y python3-venv python3-pip
@@ -122,45 +163,87 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-> **WSL vs Windows interpreters.** The repo root may contain two environment
-> directories: `.venv/` (Linux layout — use `.venv/bin/python`) and `venv/`
-> (Windows layout — `venv/Scripts/python.exe`). **Under WSL always use `.venv`**;
-> the Windows one cannot be activated from bash. Both are gitignored.
+To deactivate the environment later: `deactivate`.
 
-### 2. Configure
+</details>
 
-`config.yaml` is committed with working defaults:
+<details>
+<summary><b>Windows (PowerShell)</b></summary>
 
-```yaml
-llm:
-  provider: deepseek
-  model: deepseek-v4-flash
-  api_key: ""                                  # prefer the env var instead
-  base_url: "https://api.deepseek.com"
-  temperature: 0
-storage:  { db_path: "data/supersense.db" }
-agents:
-  nurse:      { threshold_hr_deviation: 10, threshold_temp_deviation: 1.0, observe_duration_sec: 300 }
-  diagnosis:  { max_steps: 8 }
-web:      { host: "0.0.0.0", port: 8000 }
+```powershell
+cd <repo>
+
+# 1. Confirm the interpreter (use the py launcher, not bare `python`)
+py -3.12 --version                # expect 3.12.x
+
+# 2. Create and activate a virtual environment
+py -3.12 -m venv venv
+.\venv\Scripts\Activate.ps1
+
+# 3. Install dependencies
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+
+# 4. Optional: enable live LLM triage (session-scoped)
+$env:DEEPSEEK_API_KEY = "sk-..."
+
+# 5. Run
+python main.py                    # → http://127.0.0.1:8000
 ```
 
-**The API key is optional.** Without it the Diagnosis Agent is not invoked live
-and the weekly report falls back to the deterministic evidence renderer — the
-full pipeline, UI, and report still work offline:
+**If `Activate.ps1` is blocked** with *"running scripts is disabled on this system"*,
+allow it for the current shell only (no permanent policy change):
 
-```bash
-export DEEPSEEK_API_KEY=sk-...     # only needed for live LLM triage and ?llm=1
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\venv\Scripts\Activate.ps1
 ```
 
-### 3. Start the workstation
+**If the console shows mojibake**, or you hit
+`UnicodeDecodeError: 'gbk' codec can't decode byte ...`, switch the console to
+UTF-8 for the session:
 
-```bash
-source .venv/bin/activate
+```powershell
+$env:PYTHONUTF8 = "1"
+chcp 65001
 python main.py
 ```
 
-Then open **<http://127.0.0.1:8000>**. Equivalent to `make run`.
+To deactivate the environment later: `deactivate`.
+
+Using **cmd.exe** instead of PowerShell? Same steps, but activate with
+`venv\Scripts\activate.bat`.
+
+</details>
+
+<details>
+<summary><b>Both platforms — one-liners</b></summary>
+
+WSL / Linux:
+
+```bash
+cd <repo> && python3 -m venv .venv && source .venv/bin/activate \
+  && pip install -r requirements.txt && python main.py
+```
+
+Windows PowerShell:
+
+```powershell
+cd <repo>; py -3.12 -m venv venv; .\venv\Scripts\Activate.ps1; `
+  pip install -r requirements.txt; python main.py
+```
+
+The `Makefile` targets (`make install` / `make run` / `make test`) are
+convenience wrappers for the `bash` path only — PowerShell has no `make` by
+default, so use the explicit commands above.
+
+</details>
+
+---
+
+### Step 3 — Use it
+
+Open **<http://127.0.0.1:8000>**.
 
 | Route | What it shows |
 |-------|---------------|
@@ -187,23 +270,34 @@ http://127.0.0.1:8000/report?view=blocks&lang=en
 http://127.0.0.1:8000/report?view=report&lang=zh&figure=1
 ```
 
-### 4. Run the tests
+---
+
+### Step 4 — Run the tests
+
+WSL / Linux:
 
 ```bash
 source .venv/bin/activate
 pytest tests/ -q
 ```
 
+Windows PowerShell:
+
+```powershell
+.\venv\Scripts\Activate.ps1
+pytest tests/ -q
+```
+
 Provider-free — no API key required. The Agent-layer suites run fully offline.
 
 ```bash
-pytest tests/test_report_agent.py -v
-# 29 passed — canonical blocks, evidence trail, quality-rate deduplication,
+pytest tests/test_report_agent.py tests/test_report_data.py -v
+# 37 passed — canonical blocks, evidence trail, quality-rate deduplication,
 #              decision-path inference, bilingual output, LLM path,
-#              provider-failure fallback, Q&A
+#              provider-failure fallback, Q&A, report window selection
 ```
 
-Browser end-to-end suite (optional, extra install):
+Browser end-to-end suite (optional, extra install — same on both platforms):
 
 ```bash
 pip install playwright && playwright install chromium
@@ -227,6 +321,8 @@ pytest tests/test_web_e2e.py -q
 > - Later tests in the same run see a database an earlier test deleted — the
 >   root cause of the current `14 failed / 7 errors` baseline. It is **not**
 >   21 independent product defects.
+> - On Windows the failure count is inflated further, because deleting a file
+>   whose SQLite handle is still open raises `WinError 32`.
 > - `make clean` deletes the same file.
 >
 > Recovery is automatic: delete `data/supersense.db` and restart; the app
@@ -234,14 +330,26 @@ pytest tests/test_web_e2e.py -q
 > CSVs must be re-imported (`scripts/load_portable_v2.py`, or the load buttons
 > in the UI). Back up first if it matters:
 >
+> WSL / Linux:
+>
 > ```bash
 > cp data/supersense.db /tmp/ssd-backup.db
+> ```
+>
+> Windows PowerShell:
+>
+> ```powershell
+> Copy-Item data\supersense.db $env:TEMP\ssd-backup.db
 > ```
 >
 > The fix is a per-test `tmp_path` database with connections closed before
 > teardown — tracked under *Known issues*.
 
+---
+
 ### Makefile targets
+
+Bash only (WSL / Linux):
 
 ```bash
 make install   # pip install -r requirements.txt
@@ -250,17 +358,29 @@ make test      # pytest tests/ -v        ⚠ deletes data/supersense.db
 make clean     # removes __pycache__     ⚠ also deletes data/supersense.db
 ```
 
+---
+
 ### Troubleshooting
 
 | Symptom | Cause and fix |
 |---------|---------------|
-| `ModuleNotFoundError: No module named 'markdown'` | Dependencies not installed. `pip install -r requirements.txt` (declared as `Markdown==3.10.2`). |
+| `python: command not found` (WSL/Linux) | Use `python3`, or activate the venv first so `python` resolves inside it. |
+| `python` opens the Microsoft Store (Windows) | The App Execution Alias is intercepting it. Use `py -3.12`, or disable the alias under *Settings → Apps → App execution aliases*. |
+| `.\venv\Scripts\Activate.ps1 : running scripts is disabled` | `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` (current shell only). |
+| `ModuleNotFoundError: No module named 'markdown'` | Dependencies not installed, or the venv is not active. `pip install -r requirements.txt` (declared as `Markdown==3.10.2`). |
 | `ModuleNotFoundError: No module named 'yaml'` | Same — `PyYAML` is in `requirements.txt`. |
-| `UnicodeDecodeError: 'gbk' codec can't decode byte ...` | Native Windows reading `config.yaml` without an explicit encoding. Fixed in `main.py` and `web/app.py`; **use WSL** if it persists. |
+| `UnicodeDecodeError: 'gbk' codec can't decode byte ...` | Native Windows reading `config.yaml` without an explicit encoding. Set `$env:PYTHONUTF8 = "1"`, or use WSL. |
+| `PermissionError: [WinError 32] The process cannot access the file` | A SQLite handle is still open — this is the test-isolation defect above. Close the app, or use WSL. |
 | `/report` returns HTTP 500 with `'NoneType' object has no attribute 'get'` | Empty database with no sensing rows. Guarded in `web/app.py`; restart to trigger the auto-seed. |
 | Report page unstyled, or `TemplateNotFound` | `base.html` links `/static/ssd.css`. Confirm the file exists under `web/static/`. |
 | `sqlite3.IntegrityError: FOREIGN KEY constraint failed` when writing an episode | `episode_logs.event_id` references `health_events`. Any subscriber calling `DiagnosisAgent.handle_event()` must first persist the parent row with `insert_health_event(...)` — see the `on_diagnosis_event` subscriber in `main.py`. |
 | Port 8000 already in use | Change `web.port` in `config.yaml`. |
+
+> **WSL vs Windows interpreters.** The repo root may contain two environment
+> directories: `.venv/` (Linux layout — use `.venv/bin/python`) and `venv/`
+> (Windows layout — `venv\Scripts\python.exe`). **Under WSL always use `.venv`**;
+> the Windows one cannot be activated from bash, and vice versa. Both are
+> gitignored, so a fresh clone has neither.
 
 <details>
 <summary><b>中文说明 — 快速开始</b></summary>
@@ -269,21 +389,48 @@ make clean     # removes __pycache__     ⚠ also deletes data/supersense.db
 
 | | |
 |---|---|
-| Python | **3.12**（代码使用 `list[str]` / `X \| None` 语法） |
-| 操作系统 | Linux / **推荐 WSL**。原生 Windows 可运行，但测试套件会删除共享的 SQLite 文件并触发 `WinError 32` 文件锁 —— 见「已知问题」 |
-| 硬件 | **不需要**。感知层回放已配置的 CSV / 派生文件，运行 Agent 层无需任何射频硬件 |
+| Python | **3.12**（代码使用 `list[str]` / `X \| None` 语法）。Windows 用 `py -3.12`，Linux/WSL 用 `python3.12` |
+| 操作系统 | Linux、**WSL（推荐）**，或 Windows 10/11 + PowerShell |
+| Git | 任意较新版本 |
+| 硬件 | **不需要**。感知层回放已配置的 CSV / 派生文件，运行 Agent 层无需任何 WiFi 网卡、雷达或热成像硬件 |
+| LLM Key | **可选**。不设置时周报回退到确定性渲染器，其余功能照常 |
 
-### 1. 安装
+### 第一步 —— 克隆
+
+两种方式任选。
+
+**SSH**（需已在 GitHub 注册 SSH key）：
 
 ```bash
-cd "/mnt/c/Users/29461/Desktop/My Workspace/ubicomp"
-python3 --version            # 应为 3.12.x
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+git clone git@github.com:jiale-li-orion/SuperSensorDoctor.git
+cd SuperSensorDoctor
 ```
 
-若 `python3 -m venv` 报缺少 `ensurepip` / `venv` 模块：
+**HTTPS**（通用，可能要求输入用户名 / token）：
+
+```bash
+git clone https://github.com/jiale-li-orion/SuperSensorDoctor.git
+cd SuperSensorDoctor
+```
+
+> 本工作区中的检出目录名为 `ubicomp/`。下文命令中的 `<repo>` 请替换为你自己的路径。
+
+### 第二步 —— 安装并启动
+
+**WSL / Linux（bash）**
+
+```bash
+cd <repo>
+python3 --version                 # 应为 3.12.x
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+export DEEPSEEK_API_KEY=sk-...    # 可选，启用实时 LLM 分诊
+python main.py                    # → http://127.0.0.1:8000
+```
+
+若第二步报 `No module named venv` / `ensurepip is not available`：
 
 ```bash
 sudo apt update && sudo apt install -y python3-venv python3-pip
@@ -291,29 +438,44 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-> **WSL 与 Windows 解释器之别。** 仓库根目录可能同时存在两套环境：
-> `.venv/`（Linux 结构，用 `.venv/bin/python`）与 `venv/`（Windows 结构，
-> `venv/Scripts/python.exe`）。**在 WSL 下一律使用 `.venv`** —— Windows 那套
-> 无法从 bash 激活。两者均被 gitignore 忽略。
+退出环境：`deactivate`。
 
-### 2. 配置
+**Windows（PowerShell）**
 
-`config.yaml` 已提交并带有可用默认值（字段含义见上方英文区）。**API Key 是可选的**：
-不设置时不会实时调用诊断 Agent，周报自动回退到确定性证据渲染器 —— 完整流水线、
-界面与报告仍可离线工作。
-
-```bash
-export DEEPSEEK_API_KEY=sk-...     # 仅在需要实时 LLM 分诊与 ?llm=1 时设置
+```powershell
+cd <repo>
+py -3.12 --version                # 应为 3.12.x
+py -3.12 -m venv venv
+.\venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+$env:DEEPSEEK_API_KEY = "sk-..."  # 可选，仅当前会话有效
+python main.py                    # → http://127.0.0.1:8000
 ```
 
-### 3. 启动
+若 `Activate.ps1` 被拦，报 *"running scripts is disabled on this system"*，
+**只对当前 shell** 放开（不永久修改系统策略）：
 
-```bash
-source .venv/bin/activate
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\venv\Scripts\Activate.ps1
+```
+
+若控制台中文乱码，或报 `UnicodeDecodeError: 'gbk' codec can't decode byte ...`，
+把当前会话切到 UTF-8：
+
+```powershell
+$env:PYTHONUTF8 = "1"
+chcp 65001
 python main.py
 ```
 
-然后打开 **<http://127.0.0.1:8000>**。等价于 `make run`。
+退出环境：`deactivate`。用 **cmd.exe** 的话步骤相同，激活命令换成
+`venv\Scripts\activate.bat`。
+
+### 第三步 —— 使用
+
+打开 **<http://127.0.0.1:8000>**。
 
 | 路由 | 内容 |
 |------|------|
@@ -334,20 +496,24 @@ episode、10 条 health event 与 400 个传感窗口，界面不会空白，无
 | `figure` | `1` | 出图模式，隐藏导航与操作按钮 |
 | `llm` | `1` | **若**已设置 `DEEPSEEK_API_KEY` 则走 LLM 重新生成周报，否则静默回退 |
 
-```
-http://127.0.0.1:8000/report?view=blocks&lang=en
-http://127.0.0.1:8000/report?view=report&lang=zh&figure=1
-```
+### 第四步 —— 运行测试
 
-### 4. 运行测试
+WSL / Linux：
 
 ```bash
 source .venv/bin/activate
 pytest tests/ -q
 ```
 
-无需 API Key，Agent 层测试可完全离线运行。浏览器端到端套件为可选项，需额外安装
-`playwright` 并执行 `playwright install chromium`。
+Windows PowerShell：
+
+```powershell
+.\venv\Scripts\Activate.ps1
+pytest tests/ -q
+```
+
+无需 API Key，Agent 层测试可完全离线运行。浏览器端到端套件为可选项，两个平台一致：
+先 `pip install playwright` 再 `playwright install chromium`。
 
 > ### ⚠️ 跑测试会清空 `data/supersense.db`
 >
@@ -365,20 +531,21 @@ pytest tests/ -q
 > - 你已加载的演示数据或回放数据会被销毁。
 > - 同一次运行中，后面的测试看到的是被前面测试删掉的库 —— 这才是当前
 >   `14 failed / 7 errors` 基线的根因，**不是 21 个独立产品缺陷**。
+> - Windows 下失败数会进一步放大：SQLite 句柄未释放时删除文件会抛 `WinError 32`。
 > - `make clean` 会删除同一个文件。
 >
 > 恢复是自动的：删掉 `data/supersense.db` 后重启，应用会重新播种 10 条演示数据。
 > 从 `portable_v2` 或队伍 CSV 导入的数据需重新导入（`scripts/load_portable_v2.py`，
 > 或界面上的加载按钮）。数据重要时先备份：
 >
-> ```bash
-> cp data/supersense.db /tmp/ssd-backup.db
-> ```
+> WSL / Linux：`cp data/supersense.db /tmp/ssd-backup.db`
+>
+> Windows PowerShell：`Copy-Item data\supersense.db $env:TEMP\ssd-backup.db`
 >
 > 正确修法是把测试库指向每个测试独立的 `tmp_path`，并在 teardown 前关闭连接，
 > 已记录在「已知问题」中。
 
-### Makefile 目标
+### Makefile 目标（仅 bash / WSL / Linux）
 
 ```bash
 make install   # pip install -r requirements.txt
@@ -387,17 +554,28 @@ make test      # pytest tests/ -v        ⚠ 会删除 data/supersense.db
 make clean     # 清理 __pycache__        ⚠ 同时删除 data/supersense.db
 ```
 
+PowerShell 默认没有 `make`，请直接使用上文列出的显式命令。
+
 ### 常见故障排查
 
 | 现象 | 原因与处理 |
 |------|-----------|
-| `ModuleNotFoundError: No module named 'markdown'` | 依赖未安装。执行 `pip install -r requirements.txt`（已声明 `Markdown==3.10.2`）。 |
+| `python: command not found`（WSL/Linux） | 改用 `python3`，或先激活 venv，使 `python` 指向环境内的解释器。 |
+| 在 Windows 输入 `python` 却打开 Microsoft Store | 应用执行别名拦截。改用 `py -3.12`，或在 *设置 → 应用 → 应用执行别名* 中关闭。 |
+| `.\venv\Scripts\Activate.ps1 : running scripts is disabled` | `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`（仅当前 shell 生效）。 |
+| `ModuleNotFoundError: No module named 'markdown'` | 依赖未安装或 venv 未激活。执行 `pip install -r requirements.txt`（已声明 `Markdown==3.10.2`）。 |
 | `ModuleNotFoundError: No module named 'yaml'` | 同上，`PyYAML` 已在 `requirements.txt` 中。 |
-| `UnicodeDecodeError: 'gbk' codec can't decode byte ...` | 原生 Windows 未显式指定编码读取 `config.yaml`。已在 `main.py` 与 `web/app.py` 修复；若仍出现请改用 WSL。 |
+| `UnicodeDecodeError: 'gbk' codec can't decode byte ...` | 原生 Windows 未显式指定编码读取 `config.yaml`。设置 `$env:PYTHONUTF8 = "1"`，或改用 WSL。 |
+| `PermissionError: [WinError 32] The process cannot access the file` | SQLite 句柄未释放 —— 即上述测试隔离缺陷。关闭应用，或改用 WSL。 |
 | `/report` 返回 HTTP 500，报 `'NoneType' object has no attribute 'get'` | 空数据库、无传感记录。`web/app.py` 已加保护；重启以触发自动播种。 |
 | 周报页无样式，或报 `TemplateNotFound` | `base.html` 引用 `/static/ssd.css`，确认该文件存在于 `web/static/`。 |
 | 写入 episode 时报 `sqlite3.IntegrityError: FOREIGN KEY constraint failed` | `episode_logs.event_id` 外键指向 `health_events`。任何调用 `DiagnosisAgent.handle_event()` 的订阅者都必须先用 `insert_health_event(...)` 落库父行 —— 参见 `main.py` 的 `on_diagnosis_event`。 |
 | 8000 端口被占用 | 修改 `config.yaml` 中的 `web.port`。 |
+
+> **WSL 与 Windows 解释器之别。** 仓库根目录可能同时存在两套环境：
+> `.venv/`（Linux 结构，用 `.venv/bin/python`）与 `venv/`（Windows 结构，
+> `venv\Scripts\python.exe`）。**在 WSL 下一律使用 `.venv`** —— Windows 那套无法从
+> bash 激活，反之亦然。两者均被 gitignore 忽略，因此全新 clone 下都不存在。
 
 </details>
 
@@ -518,6 +696,7 @@ summary · evidence_trail · sensing_quality · action_routing · uncertainty
 ```
 
 - `build_report_context(episodes, events, reference_ts)` is the single source of truth — fully deterministic and provider-free.
+- `agent_layer/report_data.py` owns **how a report window is loaded**: `ReportAgent.load_window(resident_id, ...)` and `generate_weekly_report_for(resident_id, ...)` select episodes by time range, never by "the newest N rows", so a busy week cannot be silently truncated. It is the only place in the Agent layer that reaches into storage for report data.
 - The **evidence trail** block renders the paper's traceable chain explicitly: Nurse event → evidence anchors → triage tier → delivery channel → persisted `EpisodeLog`, including the reflex-path flag and the tools used.
 - Provider failures and timeouts fall through to the deterministic renderer; empty or missing LLM prose never surfaces as report content.
 - Wording is **care support**, not diagnosis.
@@ -632,6 +811,7 @@ ubicomp/
 │   ├── llm_provider.py         # DeepSeekProvider + MockProvider (OpenAI 兼容)
 │   ├── clinical_policy.py      # 临床参考层 (RCP NEWS2 reference / NICE NG249)
 │   ├── validation_results.py   # 论文已发表结果 (Table 1 / §4.1 / §4.2 / Table 2)
+│   ├── report_data.py          # 周报数据访问: 按时间窗取 episode (无行数上限)
 │   └── report_agent.py         # 周报: 共享证据上下文 + LLM prose / 确定性回退
 ├── sensing_simulator/          # 感知模拟器 (论文演示用)
 │   ├── sensor_aligner.py       # 多文件时间窗对齐 (HR + fall + temp)
@@ -646,8 +826,9 @@ ubicomp/
 │   ├── static/ssd.css          # 设计令牌与共享组件
 │   └── templates/              # base / dashboard / episodes / episode_detail / report
 ├── scripts/                    # load_portable_v2.py, team_data_demo.py
-├── tests/                      # 测试 (180 cases, pytest + pytest-asyncio)
+├── tests/                      # 测试 (188 cases, pytest + pytest-asyncio)
 │   ├── test_report_agent.py    # 29 tests — 规范区块 / 证据链 / 双语 / 质量去重 / 决策路径
+│   ├── test_report_data.py     # 8 tests — 时间窗选取 / 无行数上限 / JSON 解码
 │   ├── test_nurse_agent.py     # 规则引擎 + z-score + 模态冲突
 │   ├── test_triage_roundtrip.py# TriageDecision 落库往返 + 证据链
 │   ├── test_tools.py           # 工具 schema + registry
@@ -668,7 +849,7 @@ ubicomp/
 - **FastAPI + Jinja2** — Web doctor workstation
 - **SQLite (WAL mode)** — Local persistent storage with `PRAGMA foreign_keys`
 - **DeepSeek V4 API** — LLM provider via an OpenAI-compatible HTTP endpoint
-- **pytest + pytest-asyncio** — 180 tests across 18 test files
+- **pytest + pytest-asyncio** — 188 tests across 19 test files
 - **Playwright** — Optional browser end-to-end suite
 
 ## Key Design Decisions
@@ -696,7 +877,6 @@ Ranked by impact. None block a local demo run.
 | **P2** | `main.py` log line renders the tier twice | `print(f"...: L{decision.get('level')}")` yields `LL1`, because `level` is already stored as `L1`. |
 | **P2** | `fusion_json` has no dedicated column | `FusionResult` is persisted inside each episode's `evidence.tool_results`. Auditable, but not queryable per modality. |
 | **P2** | Live LLM path is unverified | The `?llm=1` route and the real `DeepSeekProvider` path are exercised only with `MockProvider`; no test runs against a live endpoint. |
-| **P3** | Report window fix lives in the web layer | `query_episodes_in_range()` is in `storage/models.py`, but its call site is in `web/app.py`. If the web layer is not deployed, the report reverts to the older newest-200-rows behaviour. |
 
 ## 悬置事项 / Open items
 
