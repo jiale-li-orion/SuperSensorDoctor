@@ -2,13 +2,59 @@
 
 SuperSenseDoctor is a multimodal and contactless intelligent health-guarding system for home-based elderly care. On a home edge device, the system uses **WiFi Beamforming Feedback Information (BFI)**, **mmWave radar**, and **an infrared thermal array** to continuously track respiration, heart rate, body temperature, posture, and fall events — without requiring the elderly person to wear or operate any device.
 
-This repository implements the **MultiAgent Collaboration Layer**: the orchestration layer that transforms continuous low-level sensing estimates into auditable, actionable long-term health tracking decisions.
+This repository implements the **MultiAgent Collaboration Layer**: the orchestration layer that transforms continuous low-level sensing estimates into auditable, actionable long-term health tracking decisions. It is the Agent-layer artifact accompanying the published paper below.
+
+---
 
 ## Paper
 
-The full technical report covers the complete end-to-end system. This repo focuses on the Agent layer (Section 4 of the report).
+> **SuperSenseDoctor: A Multimodal and Contactless Agent for Health Tracking**
+> Xuwen Zhang, Zijian Lu, Yicheng Lei, Rui Qiu, **Jiale Li**, Yiping Zuo, Weibei Fan, and Fu Xiao.
+> *Companion of the 2026 ACM International Joint Conference on Pervasive and Ubiquitous Computing (UbiComp Companion '26)*, October 11–15, 2026, Shanghai, China. ACM, New York, NY, USA, 5 pages.
+
+**DOI:** [10.1145/3798063.3837323](https://doi.org/10.1145/3798063.3837323) · **CCS:** Human-centered computing → Ubiquitous and mobile computing systems and tools
+
+### Cite
+
+```bibtex
+@inproceedings{zhang2026supersensedoctor,
+  author    = {Zhang, Xuwen and Lu, Zijian and Lei, Yicheng and Qiu, Rui and
+               Li, Jiale and Zuo, Yiping and Fan, Weibei and Xiao, Fu},
+  title     = {SuperSenseDoctor: A Multimodal and Contactless Agent for Health Tracking},
+  booktitle = {Companion of the 2026 ACM International Joint Conference on
+               Pervasive and Ubiquitous Computing (UbiComp Companion '26)},
+  year      = {2026},
+  pages     = {1--5},
+  location  = {Shanghai, China},
+  publisher = {ACM},
+  address   = {New York, NY, USA},
+  doi       = {10.1145/3798063.3837323}
+}
+```
+
+### Reported results
+
+The paper validates the end-to-end pipeline; this repository covers the Agent layer (§2.2) and its evaluation (§4.2).
+
+| Layer | Metric | Result |
+|-------|--------|--------|
+| Sensing (§4.1) | Heart rate MAE / RMSD vs. Huawei Watch GT 3 | **1.994 / 3.142 bpm** (fused; −51.6% MAE vs. mmWave, −52.9% vs. WiFi BFI) |
+| Sensing (§4.1) | Respiratory rate MAE / RMSD vs. respiration belt | **0.197 / 0.263 bpm** (−87.9% vs. mmWave, −92.7% vs. WiFi BFI) |
+| Sensing (§4.1) | Fall recognition accuracy | **96.5%** |
+| Coverage (§4.1) | Multi-interval state validation | **9 intervals, 2686 one-second state rows** |
+| **Agent (§4.2)** | Rule screening + hidden-answer triage checklist | **206 / 213 criteria = 96.7%** |
+| Agent (§4.2) | Deterministic rule screening | 58/60 event matches; fusion arbitration 23/24 |
+| Agent (§4.2) | Hidden-answer triage (GPT-5.4) | tier + channel 22/24; trace preserved 23/24 |
+| Agent (§4.2) | P95 latency | deterministic **0.56 ms** · LLM triage **6560.7 ms** |
+
+The §4.2 numbers are also exposed at runtime through `agent_layer/validation_results.py`, which both report rendering paths read so they cannot drift from the paper.
+
+### Prototype hardware
+
+Comfast WU785AC (WiFi BFI) · Texas Instruments AWR1843 (mmWave radar) · MLX90640 (32×24 IR thermal array) · Intel NUC (local hub and Agent runtime).
 
 ---
+
 
 ## Architecture
 
@@ -222,7 +268,7 @@ ubicomp/
 │   ├── app.py                  # FastAPI 入口 (3 routes: /, /api/replay/start, /api/health)
 │   └── templates/dashboard.html # 医生工作站 Jinja2 模板
 ├── tests/                      # 测试 (174 cases, pytest + pytest-asyncio)
-│   ├── test_report_agent.py    # 23 tests — 规范区块 / 证据链 / LLM 与回退 / 双语
+│   ├── test_report_agent.py    # 29 tests — 规范区块 / 证据链 / 双语 / 质量去重 / 决策路径
 │   ├── test_nurse_agent.py     # 规则引擎 + z-score + 模态冲突
 │   ├── test_triage_roundtrip.py# TriageDecision 落库往返 + 证据链
 │   ├── test_tools.py           # 工具 schema + registry
@@ -243,7 +289,7 @@ ubicomp/
 - **FastAPI + Jinja2** — Web doctor workstation
 - **SQLite (WAL mode)** — Local persistent storage with PRAGMA foreign_keys
 - **DeepSeek V4 API** — LLM Provider via OpenAI-compatible HTTP endpoint
-- **pytest + pytest-asyncio** — 174 tests across 18 test files
+- **pytest + pytest-asyncio** — 180 tests across 18 test files
 
 ## Key Design Decisions
 
@@ -258,9 +304,16 @@ ubicomp/
 
 ## 悬置事项
 
-| 事项 | 阻塞原因 | 预计解除 |
-|------|----------|----------|
-| `modalities_json` / `fusion_json` 字段 | 等待队友提供 per-modality 数据模型格式。DB schema 已有 `sensing_windows` 表支撑，但需补充每个模态独立估计值后才能构建完整 `FusionResult.estimates`。 | TBD |
+| 事项 | 状态 | 说明 |
+|------|------|------|
+| per-modality `modalities_json` | 已落地 | `sensing_windows.modalities_json` 已建成并由 `scripts/load_portable_v2.py` 写入每模态估计值（`hr_wifi` / `hr_mm` / `rr_wifi` / `rr_mm`）。 |
+| `fusion_json` 独立列 | **未落地** | `FusionResult` 目前随 episode 的 `evidence.tool_results` 落库，尚未单独建列。当前不影响报告可追溯性。 |
+
+## 已知问题
+
+| 严重度 | 问题 | 说明 |
+|--------|------|------|
+| P2 | 测试数据库未隔离 | `tests/` 中多个 fixture 直接共用并删除 `data/supersense.db`，在已有演示数据时会因外键与文件占用而失败。本机基线为 14 failed + 7 errors（Windows 下因文件锁会放大到 99 errors）。修复方向：把测试库改到 `tmp_path` 下并在 teardown 前关闭连接。 |
 
 ## Getting Started
 
@@ -283,7 +336,7 @@ make run
 
 ```
 pytest tests/ -v
-# 165 tests collected
+# 180 tests collected
 ```
 
 The Agent-layer suites (`test_report_agent.py`, `test_diagnosis_agent.py`, `test_fusion_engine.py`, `test_tiered_action.py`) are provider-free and run offline. A group of DB-fixture tests (`test_baseline_provider.py`, `test_triage_roundtrip.py`, the `TestNurseAgentZScore` fixtures, and the `test_tools.py` snapshot assertions) seed parent rows directly and are sensitive to an already-populated `data/supersense.db` — run them against a clean database.
@@ -292,8 +345,9 @@ Report Agent tests specifically:
 
 ```
 pytest tests/test_report_agent.py -v
-# 14 passed — canonical blocks, evidence trail, quality aggregation,
-#              LLM path, provider-failure fallback, Q&A
+# 29 passed — canonical blocks, evidence trail, quality-rate deduplication,
+#              decision-path inference, bilingual output, LLM path,
+#              provider-failure fallback, Q&A
 ```
 
 ## Data Privacy & MCP Vision

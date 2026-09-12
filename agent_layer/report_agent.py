@@ -531,6 +531,28 @@ def _build_evidence_trail(rec: dict, lang: str = DEFAULT_LANG) -> dict:
     tools_called = [str(t) for t in _as_list(audit.get("tools_called", []))]
     channel = str(rec["action"].get("channel", "none") or "none")
 
+    # Decision path. `reflex` is the authoritative flag. Older records predate
+    # it, so when it is absent we fall back to a conservative inference: zero
+    # reasoning steps plus deterministic-only tools cannot have come from the
+    # deliberative ReAct loop.
+    #
+    # `reflex_inferred` marks only the cases where that inference OVERRODE the
+    # default reading (absent flag => deliberative). When inference agrees with
+    # the default there is nothing surprising to disclose, and flagging every
+    # legacy row would just add noise.
+    reflex_raw = audit.get("reflex")
+    step_count = audit.get("step_count")
+    if reflex_raw is None:
+        deterministic_only = bool(tools_called) and all(
+            t.startswith("nurse") or t in ("issue_action", "write_episode")
+            for t in tools_called
+        )
+        reflex = bool(step_count == 0 and deterministic_only)
+        reflex_inferred = reflex
+    else:
+        reflex = bool(reflex_raw)
+        reflex_inferred = False
+
     return {
         "episode_id": rec["episode_id"],
         "timestamp": rec["timestamp"].isoformat(),
@@ -546,8 +568,9 @@ def _build_evidence_trail(rec: dict, lang: str = DEFAULT_LANG) -> dict:
         "tier_label": _pick(TIER_LABELS[rec["tier"]], lang),
         "channel": channel,
         "channel_label": _pick(CHANNEL_LABELS[channel], lang) if channel in CHANNEL_LABELS else channel,
-        "reflex": bool(audit.get("reflex")),
-        "step_count": audit.get("step_count"),
+        "reflex": reflex,
+        "reflex_inferred": reflex_inferred,
+        "step_count": step_count,
         "tools_called": tools_called,
         "evidence_used": _as_list(decision.get("evidence_used", [])),
         "safety_boundary": decision.get("safety_boundary", "care_support_only"),
@@ -555,28 +578,45 @@ def _build_evidence_trail(rec: dict, lang: str = DEFAULT_LANG) -> dict:
 
 
 def _build_sensing_quality(records: list, events: list, lang: str = DEFAULT_LANG) -> dict:
-    """Quality events and cross-modal arbitration, from events + evidence."""
-    nlos = low_conf = conflict = 0
-    quality_flags = 0
+    """Quality events and cross-modal arbitration, from events + evidence.
+
+    Two different quantities are reported, and they must not be conflated:
+
+    * ``quality_flag_count`` / ``quality_event_rate_pct`` — how many *records*
+      carry at least one quality signal, and that share of all records. This is
+      the rate, so it is bounded to 0-100%.
+    * ``quality_signal_count`` — the total number of distinct quality signals,
+      which may legitimately exceed the record count when a record carries
+      several.
+
+    Signal identity is keyed on ``event_id`` so that one NLOS occurrence seen
+    both as a HealthEvent and inside an episode's evidence chain is counted
+    once, not twice.
+    """
+    nlos_keys: set = set()
+    low_conf_keys: set = set()
+    conflict_keys: set = set()
+    flagged_records: set = set()
     wifi_confs, mmwave_confs = [], []
     dominant_counts: dict = {}
 
-    for ev in events:
+    for idx, ev in enumerate(events):
         et = _field(ev, "event_type", "") or ""
         markers = _as_dict(_field(ev, "rule_markers", {}))
+        key = _field(ev, "event_id") or f"evt#{idx}"
 
         if et == "nlos_occlusion" or markers.get("nlos_flag"):
-            nlos += 1
+            nlos_keys.add(key)
         if et == "low_confidence":
-            low_conf += 1
+            low_conf_keys.add(key)
         if et == "modality_conflict":
-            conflict += 1
+            conflict_keys.add(key)
 
         for metric in ("hr", "rr"):
             dominant = markers.get(f"{metric}_dominant")
             if dominant:
-                key = f"{metric}:{dominant}"
-                dominant_counts[key] = dominant_counts.get(key, 0) + 1
+                bucket = f"{metric}:{dominant}"
+                dominant_counts[bucket] = dominant_counts.get(bucket, 0) + 1
 
         wc = _field(ev, "wifi_confidence")
         mc = _field(ev, "mmwave_confidence")
@@ -587,10 +627,15 @@ def _build_sensing_quality(records: list, events: list, lang: str = DEFAULT_LANG
 
     for rec in records:
         summary = _as_dict(rec["evidence"].get("sensing_summary", {}))
-        if summary.get("quality_event"):
-            quality_flags += 1
+        # Prefer the triggering event id so an event and its episode evidence
+        # resolve to the same key; fall back to the episode id.
+        key = rec.get("event_id") or rec["episode_id"]
+
+        if summary.get("quality_event") or summary.get("nlos_flag"):
+            flagged_records.add(rec["episode_id"])
         if summary.get("nlos_flag"):
-            nlos += 1
+            nlos_keys.add(key)
+
         wc, mc = summary.get("wifi_confidence"), summary.get("mmwave_confidence")
         if wc is not None:
             wifi_confs.append(float(wc))
@@ -599,12 +644,22 @@ def _build_sensing_quality(records: list, events: list, lang: str = DEFAULT_LANG
         for metric, field in (("hr", "hr_source"), ("rr", "rr_source")):
             src = summary.get(field)
             if src:
-                key = f"{metric}:{src}"
-                dominant_counts[key] = dominant_counts.get(key, 0) + 1
+                bucket = f"{metric}:{src}"
+                dominant_counts[bucket] = dominant_counts.get(bucket, 0) + 1
 
-    total_windows = len(records) or 1
-    quality_signals = nlos + low_conf + conflict + quality_flags
-    quality_rate = round(quality_signals / total_windows * 100, 1) if records else 0.0
+    nlos = len(nlos_keys)
+    low_conf = len(low_conf_keys)
+    conflict = len(conflict_keys)
+    quality_signal_count = nlos + low_conf + conflict
+    quality_flag_count = len(flagged_records)
+
+    total_records = len(records)
+    if total_records:
+        # Bounded by construction: the numerator is a subset of the records.
+        quality_rate = round(quality_flag_count / total_records * 100, 1)
+        quality_rate = min(quality_rate, 100.0)
+    else:
+        quality_rate = 0.0
 
     dominant = [
         {"metric": k.split(":", 1)[0], "branch": k.split(":", 1)[1], "count": v}
@@ -615,8 +670,9 @@ def _build_sensing_quality(records: list, events: list, lang: str = DEFAULT_LANG
         "nlos_count": nlos,
         "low_confidence_count": low_conf,
         "modality_conflict_count": conflict,
-        "quality_event_count": quality_flags,
-        "quality_signal_count": quality_signals,
+        "quality_flag_count": quality_flag_count,
+        "quality_signal_count": quality_signal_count,
+        "total_records": total_records,
         "quality_event_rate_pct": quality_rate,
         "mean_wifi_confidence_pct": round(sum(wifi_confs) / len(wifi_confs) * 100) if wifi_confs else None,
         "mean_mmwave_confidence_pct": round(sum(mmwave_confs) / len(mmwave_confs) * 100) if mmwave_confs else None,
@@ -898,7 +954,11 @@ def render_fallback_report(context: dict, lang: Optional[str] = None) -> str:
                  "reflex path (deterministic, no LLM deliberation)") \
             if trail["reflex"] else \
             S(f"推演式 ReAct 循环（{trail['step_count']} 步）",
-              f"deliberative ReAct loop ({trail['step_count']} steps)")
+              f"deliberative ReAct loop "
+              f"({trail['step_count']} "
+              f"{'step' if trail['step_count'] == 1 else 'steps'})")
+        if trail.get("reflex_inferred"):
+            path += S("（依据审计字段推断）", " (inferred from the audit fields)")
         lines.append(f"- **{S('决策路径', 'Decision path')}**: {path}")
         if trail["tools_called"]:
             lines.append("- **" + S("调用工具", "Tools used") + "**: "
@@ -916,11 +976,13 @@ def render_fallback_report(context: dict, lang: Optional[str] = None) -> str:
                  f"**{quality['low_confidence_count']}**")
     lines.append(f"- {S('模态冲突', 'Modality conflicts')}: "
                  f"**{quality['modality_conflict_count']}**")
-    lines.append(f"- {S('质量标记占比', 'Quality-flagged share')}: "
+    lines.append(f"- {S('质量信号总数', 'Total quality signals')}: "
+                 f"**{quality['quality_signal_count']}**")
+    lines.append(f"- {S('带质量标记的记录占比', 'Quality-flagged records')}: "
                  f"**{quality['quality_event_rate_pct']}%** "
-                 f"({quality['quality_signal_count']} "
-                 f"{S('个信号 /', 'signals over')} "
-                 f"{summary['total_records']} {S('条记录', 'records')})")
+                 f"({quality['quality_flag_count']} / "
+                 f"{quality.get('total_records', summary['total_records'])} "
+                 f"{S('条记录', 'records')})")
     if quality["mean_wifi_confidence_pct"] is not None:
         lines.append(f"- {S('WiFi BFI 平均置信度', 'Mean WiFi BFI confidence')}: "
                      f"**{quality['mean_wifi_confidence_pct']}%**")

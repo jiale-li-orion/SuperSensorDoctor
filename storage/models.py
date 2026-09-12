@@ -190,6 +190,44 @@ def query_episodes_by_resident(resident_id: str, limit: int = 50) -> list[dict]:
         return [_row_to_dict(r) for r in rows]
 
 
+def query_episodes_in_range(
+    resident_id: str,
+    start: str,
+    end: str,
+    limit: Optional[int] = None,
+) -> list[dict]:
+    """Return every episode whose start_time falls inside [start, end].
+
+    Reports must select by time window rather than "the newest N rows": a
+    row-limit silently truncates a busy week and makes the episode totals
+    inconsistent with the sensing and event tables, which are queried by
+    time range.
+
+    Args:
+        resident_id: resident key.
+        start: inclusive ISO-8601 lower bound.
+        end: inclusive ISO-8601 upper bound.
+        limit: optional safety cap. ``None`` (the default) returns all rows
+            in the window, so the caller's counts are complete.
+
+    Returns:
+        Episode dicts ordered oldest-first, matching report reading order.
+    """
+    sql = """
+        SELECT * FROM episode_logs
+        WHERE resident_id=? AND start_time>=? AND start_time<=?
+        ORDER BY start_time ASC
+    """
+    params: list = [resident_id, start, end]
+    if limit is not None:
+        sql += " LIMIT ?"
+        params.append(limit)
+
+    with get_db() as conn:
+        rows = conn.execute(sql, tuple(params)).fetchall()
+        return [_row_to_dict(r) for r in rows]
+
+
 # ── Latest Sensing Window ──
 
 def query_latest_sensing_window(resident_id: str) -> dict:
@@ -592,7 +630,8 @@ def seed_demo_data():
                  json.dumps({"level":lvl,"label":"","event_interpretation":d["interpretation"],
                      "clinical_basis":d["basis"]}),
                  json.dumps({"channel":level_ch.get(lvl,"none")}),
-                 json.dumps({"tools_called":["nurse:seed"],"step_count":0})))
+                 json.dumps({"tools_called":["nurse:seed"],"step_count":0,
+                             "reflex":True})))
             event_ts += timedelta(minutes=6)
 
         return True

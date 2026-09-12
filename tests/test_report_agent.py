@@ -265,3 +265,83 @@ class TestBilingual:
         agent = ReportAgent()
         # A Chinese question asked while the UI is in English still matches.
         assert "thermometer" in agent.answer_question("体温怎么测的？", "en").lower()
+
+
+class TestQualityRateDeduplication:
+    """The quality rate must be a bounded record share, not a signal ratio."""
+
+    @staticmethod
+    def _ep(episode_id, event_id, nlos=False, quality=False):
+        # Episodes arrive from the DB as dicts and DO carry event_id, which is
+        # what lets an event and its episode evidence dedupe to one signal.
+        return {
+            "episode_id": episode_id,
+            "event_id": event_id,
+            "resident_id": "resident_01",
+            "start_time": datetime.now().isoformat(),
+            "decision": {"level": "L1"},
+            "action": {"channel": "none"},
+            "audit": {},
+            "evidence": {"sensing_summary": {"nlos_flag": nlos,
+                                             "quality_event": int(quality)}},
+        }
+
+    def test_same_nlos_is_not_double_counted(self):
+        # One NLOS occurrence: seen as a HealthEvent AND in episode evidence.
+        records = [self._ep("ep1", "evt_1", nlos=True)]
+        events = [{"event_id": "evt_1", "event_type": "nlos_occlusion"},
+                  {"event_id": "evt_1", "event_type": "nlos_occlusion"}]
+        q = build_report_context(records, events)["sensing_quality"]
+        assert q["nlos_count"] == 1
+
+    def test_rate_never_exceeds_100_percent(self):
+        # Many distinct signals crammed into one record: the case that
+        # previously produced a >100% rate.
+        records = [self._ep("ep1", "evt_1", nlos=True, quality=True)]
+        events = [
+            {"event_id": "e1", "event_type": "low_confidence"},
+            {"event_id": "e2", "event_type": "modality_conflict"},
+            {"event_id": "e3", "event_type": "low_confidence"},
+            {"event_id": "e4", "event_type": "modality_conflict"},
+        ]
+        q = build_report_context(records, events)["sensing_quality"]
+        assert q["quality_event_rate_pct"] <= 100.0
+        assert q["quality_flag_count"] <= q["total_records"]
+        # The signal total may legitimately exceed the record count.
+        assert q["quality_signal_count"] > q["quality_flag_count"]
+
+    def test_signal_count_is_separate_from_flag_count(self):
+        records = [self._ep(f"ep{i}", f"evt{i}") for i in range(4)]
+        events = [{"event_id": "e1", "event_type": "modality_conflict"},
+                  {"event_id": "e2", "event_type": "modality_conflict"}]
+        q = build_report_context(records, events)["sensing_quality"]
+        assert q["quality_signal_count"] == 2
+        assert q["quality_flag_count"] == 0
+        assert q["quality_event_rate_pct"] == 0.0
+
+
+class TestDecisionPathInference:
+    """A zero-step record must never be labelled a deliberative ReAct loop."""
+
+    def test_explicit_reflex_flag_wins(self):
+        ep = make_ep("L4", 0, audit={"reflex": True, "step_count": 0,
+                                     "tools_called": ["nurse_rule"]})
+        trail = build_report_context([ep])["evidence_trail"]
+        assert trail["reflex"] is True
+        assert trail["reflex_inferred"] is False
+
+    def test_legacy_seed_record_is_inferred_as_reflex(self):
+        # No `reflex` key, zero steps, deterministic tools only.
+        ep = make_ep("L2", 0, audit={"step_count": 0, "tools_called": ["nurse:seed"]})
+        trail = build_report_context([ep])["evidence_trail"]
+        assert trail["reflex"] is True
+        assert trail["reflex_inferred"] is True
+        assert "inferred" in render_fallback_report(build_report_context([ep]), "en")
+
+    def test_real_deliberation_is_not_misclassified(self):
+        ep = make_ep("L2", 0, audit={"step_count": 3,
+                                     "tools_called": ["read_sensing_state",
+                                                      "query_history"]})
+        trail = build_report_context([ep])["evidence_trail"]
+        assert trail["reflex"] is False
+        assert trail["reflex_inferred"] is False
