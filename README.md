@@ -129,6 +129,24 @@ summary · evidence_trail · sensing_quality · action_routing · uncertainty
 - Provider failures and timeouts fall through to the deterministic renderer; LLM prose never surfaces as report content when it is empty or missing.
 - Wording is **care support**, not diagnosis. `answer_question` uses the same care-support vocabulary.
 
+### Bilingual report (EN / 中文)
+
+Both rendering paths are fully bilingual and produce **pure** output in one language — never mixed:
+
+| Entry point | Language control |
+|-------------|------------------|
+| `build_report_context(..., lang="zh")` | Resolves every label pair for that language; codes, counts, and identifiers stay language-neutral |
+| `render_fallback_report(context, lang)` | Deterministic markdown in that language |
+| `ReportAgent.generate_weekly_report(..., lang="zh")` | Picks `REPORT_PROMPT_ZH` and the Chinese fallback |
+| `ReportAgent.answer_question(q, lang)` | Matches keyword lists in **both** languages, answers in `lang` |
+
+- Every display label is a `(zh, en)` pair: `TIER_LABELS`, `CHANNEL_LABELS`, `SOURCE_LABELS`, `EVENT_LABELS`, `SENSING_QUALITY_LABELS`, `PRIVACY_BOUNDARY`.
+- `report_prompt(lang)` selects `REPORT_PROMPT` (EN) or `REPORT_PROMPT_ZH` (中文); both constrain the model to the same ten `##` blocks.
+- `validation_results.py` carries Chinese counterparts (`task_zh`, `ground_truth_zh`, `condition_zh`, `INDICATOR_COLUMNS_ZH`, `CLINICAL_BOUNDARY_ZH`) alongside the English fields.
+- Unknown language tags fall back to English; `lang` is stored on the context so a renderer can default to the language the context was built with.
+
+The web layer keeps its own inline convention in `web/i18n.py`: `L('中文', 'English')` on the server and `T('中文', 'English')` in the browser, switched with the `lang` cookie.
+
 ### Published validation results
 
 `agent_layer/validation_results.py` holds the paper's reported numbers as a single typed source of truth:
@@ -203,8 +221,8 @@ ubicomp/
 ├── web/                        # Web UI
 │   ├── app.py                  # FastAPI 入口 (3 routes: /, /api/replay/start, /api/health)
 │   └── templates/dashboard.html # 医生工作站 Jinja2 模板
-├── tests/                      # 测试 (165 cases, pytest + pytest-asyncio)
-│   ├── test_report_agent.py    # 14 tests — 规范区块 / LLM 路径 / 回退路径
+├── tests/                      # 测试 (174 cases, pytest + pytest-asyncio)
+│   ├── test_report_agent.py    # 23 tests — 规范区块 / 证据链 / LLM 与回退 / 双语
 │   ├── test_nurse_agent.py     # 规则引擎 + z-score + 模态冲突
 │   ├── test_triage_roundtrip.py# TriageDecision 落库往返 + 证据链
 │   ├── test_tools.py           # 工具 schema + registry
@@ -225,7 +243,7 @@ ubicomp/
 - **FastAPI + Jinja2** — Web doctor workstation
 - **SQLite (WAL mode)** — Local persistent storage with PRAGMA foreign_keys
 - **DeepSeek V4 API** — LLM Provider via OpenAI-compatible HTTP endpoint
-- **pytest + pytest-asyncio** — 165 tests across 18 test files
+- **pytest + pytest-asyncio** — 174 tests across 18 test files
 
 ## Key Design Decisions
 

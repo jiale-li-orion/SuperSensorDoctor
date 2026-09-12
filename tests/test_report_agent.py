@@ -188,3 +188,80 @@ class TestQa:
     def test_answer_unknown_question(self):
         ans = ReportAgent().answer_question("What is the weather today?")
         assert "care-support scope" in ans
+
+
+class TestBilingual:
+    """The report must render as pure Chinese or pure English, never mixed."""
+
+    def _episodes(self):
+        return [make_ep("L3", 0, decision={
+            "level": "L3",
+            "event_interpretation": "Fall with sustained HR elevation",
+            "clinical_basis": [
+                {"type": "fall_context", "finding": "Fall recorded",
+                 "source": "NICE_NG249_2025"}
+            ],
+            "uncertainty": {
+                "sensing_quality": "degraded",
+                "missing_evidence": ["trend_analysis"],
+                "needs_recheck": True,
+            },
+        }, action={"channel": "family_push"},
+           audit={"reflex": False, "step_count": 3,
+                  "tools_called": ["read_sensing_state"]})]
+
+    def test_english_report(self):
+        ctx = build_report_context(self._episodes(), lang="en")
+        report = render_fallback_report(ctx, "en")
+        assert "Weekly Summary" in report
+        assert "Evidence Trail" in report
+        assert "Published Validation Results" in report
+        assert "本周" not in report
+
+    def test_chinese_report(self):
+        ctx = build_report_context(self._episodes(), lang="zh")
+        report = render_fallback_report(ctx, "zh")
+        assert "本周摘要" in report
+        assert "证据链" in report
+        assert "论文已发表验证结果" in report
+        assert "Weekly Summary" not in report
+
+    def test_chinese_labels_are_localized(self):
+        ctx = build_report_context(self._episodes(), lang="zh")
+        assert ctx["evidence_trail"]["tier_label"] == "家属告警"
+        assert ctx["evidence_trail"]["channel_label"].startswith("家属推送")
+        assert ctx["evidence_trail"]["anchors"][0]["source_label"].startswith("跌倒评估")
+        assert ctx["sensing_quality"]["note"].startswith("质量事件")
+
+    def test_english_labels_are_localized(self):
+        ctx = build_report_context(self._episodes(), lang="en")
+        assert ctx["evidence_trail"]["tier_label"] == "Family notification"
+        assert ctx["evidence_trail"]["anchors"][0]["source_label"].startswith("Fall assessment")
+
+    def test_lang_defaults_to_english(self):
+        ctx = build_report_context(self._episodes())
+        assert ctx["lang"] == "en"
+        assert "Weekly Summary" in render_fallback_report(ctx)
+
+    def test_unknown_lang_falls_back_to_english(self):
+        ctx = build_report_context(self._episodes(), lang="de")
+        assert ctx["lang"] == "en"
+
+    @pytest.mark.asyncio
+    async def test_chinese_report_via_agent(self):
+        report = await ReportAgent().generate_weekly_report(
+            self._episodes(), lang="zh"
+        )
+        assert "本周摘要" in report
+        assert "Weekly Summary" not in report
+
+    def test_qa_answers_in_both_languages(self):
+        agent = ReportAgent()
+        assert "WiFi BFI" in agent.answer_question("How is heart rate measured?", "en")
+        assert "WiFi BFI" in agent.answer_question("心率是怎么测的？", "zh")
+        assert "看护支持范围" in agent.answer_question("今天天气？", "zh")
+
+    def test_qa_matches_chinese_keywords_regardless_of_answer_language(self):
+        agent = ReportAgent()
+        # A Chinese question asked while the UI is in English still matches.
+        assert "thermometer" in agent.answer_question("体温怎么测的？", "en").lower()

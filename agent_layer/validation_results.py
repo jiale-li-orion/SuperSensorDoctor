@@ -48,7 +48,9 @@ PROVENANCE = "reported_results"
 VITAL_SIGN_VALIDATION = [
     {
         "task": "Heart rate",
+        "task_zh": "心率",
         "ground_truth": "Huawei Watch GT 3",
+        "ground_truth_zh": "Huawei Watch GT 3",
         "unit": "bpm",
         "methods": [
             {"method": "WiFi BFI", "mae": 4.237, "rmsd": 4.396},
@@ -58,7 +60,9 @@ VITAL_SIGN_VALIDATION = [
     },
     {
         "task": "Respiratory rate",
+        "task_zh": "呼吸率",
         "ground_truth": "Respiration belt",
+        "ground_truth_zh": "呼吸带",
         "unit": "bpm",
         "methods": [
             {"method": "WiFi BFI", "mae": 2.689, "rmsd": 3.293},
@@ -70,7 +74,9 @@ VITAL_SIGN_VALIDATION = [
 
 FALL_RECOGNITION = {
     "task": "Fall recognition",
+    "task_zh": "跌倒识别",
     "ground_truth": "Labeled event replays",
+    "ground_truth_zh": "带标注的事件回放",
     "method": "BFI and mmWave evidence",
     "accuracy": 0.965,
     "accuracy_pct": 96.5,
@@ -144,9 +150,21 @@ INDICATOR_COLUMNS = [
     ("surface_temp", "Surface-temp. trend"),
 ]
 
+# Chinese display labels for the same columns, positionally aligned with
+# INDICATOR_COLUMNS so a bilingual renderer can zip the two.
+INDICATOR_COLUMNS_ZH = [
+    ("respiratory_rate", "呼吸率与呼吸模式"),
+    ("heart_rate", "心率"),
+    ("gait_balance", "步态与平衡"),
+    ("activity_mobility", "活动与行动能力"),
+    ("sleep_rhythm", "睡眠节律与碎片化"),
+    ("surface_temp", "体表温度趋势"),
+]
+
 INDICATOR_COVERAGE = [
     {
         "condition": "COPD exacerbation",
+        "condition_zh": "慢阻肺急性加重",
         "refs": [5],
         "coverage": {
             "respiratory_rate": True, "heart_rate": True, "gait_balance": False,
@@ -155,6 +173,7 @@ INDICATOR_COVERAGE = [
     },
     {
         "condition": "Obstructive sleep apnea",
+        "condition_zh": "阻塞性睡眠呼吸暂停",
         "refs": [9, 15],
         "coverage": {
             "respiratory_rate": True, "heart_rate": True, "gait_balance": False,
@@ -163,6 +182,7 @@ INDICATOR_COVERAGE = [
     },
     {
         "condition": "Heart-failure decompensation",
+        "condition_zh": "心力衰竭失代偿",
         "refs": [3],
         "coverage": {
             "respiratory_rate": True, "heart_rate": True, "gait_balance": False,
@@ -171,6 +191,7 @@ INDICATOR_COVERAGE = [
     },
     {
         "condition": "Parkinson's disease",
+        "condition_zh": "帕金森病",
         "refs": [13],
         "coverage": {
             "respiratory_rate": False, "heart_rate": False, "gait_balance": True,
@@ -179,6 +200,7 @@ INDICATOR_COVERAGE = [
     },
     {
         "condition": "Cognitive decline and dementia",
+        "condition_zh": "认知衰退与痴呆",
         "refs": [4, 14],
         "coverage": {
             "respiratory_rate": False, "heart_rate": False, "gait_balance": True,
@@ -187,6 +209,7 @@ INDICATOR_COVERAGE = [
     },
     {
         "condition": "Acute respiratory infection",
+        "condition_zh": "急性呼吸道感染",
         "refs": [12],
         "coverage": {
             "respiratory_rate": True, "heart_rate": True, "gait_balance": False,
@@ -202,6 +225,10 @@ CLINICAL_BOUNDARY = (
     "Clinical interpretation is left to qualified professionals."
 )
 
+CLINICAL_BOUNDARY_ZH = (
+    "指标覆盖描述的是筛查方向，不是诊断。临床解释应由专业医务人员完成。"
+)
+
 
 def validation_block() -> dict:
     """Assemble the read-only validation block consumed by both renderers."""
@@ -214,8 +241,10 @@ def validation_block() -> dict:
         "multi_interval": MULTI_INTERVAL_VALIDATION,
         "agent_evaluation": AGENT_EVALUATION,
         "indicator_columns": INDICATOR_COLUMNS,
+        "indicator_columns_zh": INDICATOR_COLUMNS_ZH,
         "indicator_coverage": INDICATOR_COVERAGE,
         "clinical_boundary": CLINICAL_BOUNDARY,
+        "clinical_boundary_zh": CLINICAL_BOUNDARY_ZH,
     }
 
 
