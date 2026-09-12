@@ -17,7 +17,11 @@ def app_server():
     from main import create_app
     import yaml, os
 
-    config = yaml.safe_load(open(Path(__file__).parent.parent / "config.yaml"))
+    with open(
+        Path(__file__).parent.parent / "config.yaml",
+        encoding="utf-8",
+    ) as config_file:
+        config = yaml.safe_load(config_file)
     os.environ["DEEPSEEK_API_KEY"] = "sk-test"
     app = create_app(config)
 
