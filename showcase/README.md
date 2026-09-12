@@ -48,15 +48,15 @@ stays a single artifact you can email or drop on a USB stick.
 
 ## What it argues
 
-The page walks one fictional resident through the system end to end, so the
-architecture is legible without reading the code:
+The page walks one fictional resident through two scenes, so the architecture
+is legible without reading the code:
 
 | Scene | Claim |
 |-------|-------|
 | **Hero** | 7 days of continuous observation, 3 contactless sources, 2,686 valid state points, 6 screening directions |
 | **`#observation`** | How a weak signal becomes a joint deviation: sleep breaks first (Day 1–3), daytime activity falls 26% (Day 4–5), then respiration and temperature cross the personal threshold together (Day 6–7) |
 | **`#screening`** | One primary direction (acute respiratory infection, 78%) is explained in full on the left — why it ranks first, what still has to be ruled out, and what to do — while the right column keeps the whole probability spectrum visible |
-| **`#coverage`** | Table 2 of the paper: which indicator families cover which condition families, plus the reported validation figures |
+
 
 **Fictional case:** 林国安 · 74 · living alone · hypertension history · 28-day
 personal baseline · Case SSD-CR-01 · 2026.09.05–09.11.
@@ -80,8 +80,7 @@ imported from a UI kit.
   a CJK-native serif for editorial contrast.
 - **One type floor: 13px.** No informational text renders smaller, at any
   viewport.
-- **No horizontal overflow** at 390px. The Table 2 matrix is the one element
-  that pans sideways, inside its own scroll container.
+- **No horizontal overflow** at 390px.
 - **The language toggle survives on mobile.** Below 660px the section anchors
   are dropped but the toggle is kept, centred in the nav — it is the one
   control that must always be reachable.
@@ -127,7 +126,7 @@ start showcase\index.html
 **页面主张**：Hero 交代 7 日观察 / 3 类非接触传感 / 2,686 个有效状态点 / 6 个筛查方向；
 `#observation` 说明弱信号如何演化为联合偏离（睡眠先变 → 活动下降 26% → 呼吸与体温同步越阈）；
 `#screening` 左侧完整解释首要方向（急性呼吸道感染 78%）——为什么优先、仍需排除什么、该怎么
-做——右侧保留完整概率谱；`#coverage` 复刻论文 Table 2 与验证指标。
+做——右侧保留完整概率谱；
 
 **案例为虚构**：林国安 · 74 岁 · 独居 · 高血压史 · 28 天个人基线 · Case SSD-CR-01。
 页面上每个数字要么来自该虚构案例，要么引用自已发表论文，**不来自任何真实居民**。
