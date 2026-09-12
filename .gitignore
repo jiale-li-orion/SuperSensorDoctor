@@ -36,3 +36,7 @@ venv/
 portable/
 !.slim/deepwork/
 !.slim/deepwork/**
+
+# codex brainstorming skill 的临时预览会话（设计变体 + 点击留档）
+# 不是项目产物，仅本地评审用
+.superpowers/

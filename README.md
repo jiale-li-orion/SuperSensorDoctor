@@ -43,6 +43,10 @@ SuperSenseDoctor 是一套面向居家养老的多模态非接触式智能健康
 }
 ```
 
+### Presentation companion
+
+[`showcase/index.html`](showcase/index.html) is a self-contained single-page case narrative for this work — one fictional resident walked end to end through the pipeline, with the paper's Table 2 and validation figures alongside. Open it directly in a browser; it needs no server and no build step. See [`showcase/README.md`](showcase/README.md).
+
 ### Reported results
 
 The paper validates the end-to-end pipeline; this repository covers the Agent layer (§2.2) and its evaluation (§4.2).
@@ -825,6 +829,9 @@ ubicomp/
 │   ├── i18n.py                 # 内联 i18n: L()/T() + lang cookie
 │   ├── static/ssd.css          # 设计令牌与共享组件
 │   └── templates/              # base / dashboard / episodes / episode_detail / report
+├── showcase/                   # 单页案例演示 (自包含, 无需服务)
+│   ├── index.html              # 个体化健康筛查报告
+│   └── README.md
 ├── scripts/                    # load_portable_v2.py, team_data_demo.py
 ├── tests/                      # 测试 (188 cases, pytest + pytest-asyncio)
 │   ├── test_report_agent.py    # 29 tests — 规范区块 / 证据链 / 双语 / 质量去重 / 决策路径
