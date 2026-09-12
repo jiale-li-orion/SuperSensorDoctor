@@ -345,3 +345,47 @@ class TestDecisionPathInference:
         trail = build_report_context([ep])["evidence_trail"]
         assert trail["reflex"] is False
         assert trail["reflex_inferred"] is False
+
+
+class TestQualityFlagAssociation:
+    """A record whose triggering event IS a quality event counts as flagged.
+
+    Without this the rate reads 0% while the signal counts above it are
+    non-zero, because those signals live in health_events, not in the
+    episode's evidence blob.
+    """
+
+    def _ep(self, episode_id, event_id, nlos=False, quality=False):
+        return {
+            "episode_id": episode_id, "event_id": event_id,
+            "resident_id": "resident_01",
+            "start_time": datetime.now().isoformat(),
+            "decision": {"level": "L1"}, "action": {"channel": "none"},
+            "audit": {},
+            "evidence": {"sensing_summary": {"nlos_flag": nlos,
+                                             "quality_event": int(quality)}},
+        }
+
+    def test_event_linked_record_is_counted(self):
+        records = [self._ep("ep1", "evt_q"), self._ep("ep2", "evt_normal")]
+        events = [{"event_id": "evt_q", "event_type": "nlos_occlusion"}]
+        q = build_report_context(records, events)["sensing_quality"]
+        assert q["nlos_count"] == 1
+        assert q["quality_flag_count"] == 1
+        assert q["quality_event_rate_pct"] == 50.0
+
+    def test_evidence_flagged_record_is_counted(self):
+        records = [self._ep("ep1", "evt_a", nlos=True)]
+        q = build_report_context(records, [])["sensing_quality"]
+        assert q["quality_flag_count"] == 1
+        assert q["quality_event_rate_pct"] == 100.0
+
+    def test_rate_matches_signal_counts_when_signals_are_linked(self):
+        records = [self._ep(f"ep{i}", f"evt{i}") for i in range(4)]
+        events = [{"event_id": "evt0", "event_type": "nlos_occlusion"},
+                  {"event_id": "evt1", "event_type": "low_confidence"},
+                  {"event_id": "evt2", "event_type": "modality_conflict"}]
+        q = build_report_context(records, events)["sensing_quality"]
+        assert q["quality_signal_count"] == 3
+        assert q["quality_flag_count"] == 3
+        assert q["quality_event_rate_pct"] == 75.0

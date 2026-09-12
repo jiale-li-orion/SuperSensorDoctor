@@ -651,6 +651,17 @@ def _build_sensing_quality(records: list, events: list, lang: str = DEFAULT_LANG
                 bucket = f"{metric}:{src}"
                 dominant_counts[bucket] = dominant_counts.get(bucket, 0) + 1
 
+    # A record is "quality flagged" when it carries a quality signal either in
+    # its own evidence OR because its triggering event IS a quality event.
+    # Without the second condition the rate reads as 0% while the counts above
+    # it show non-zero NLOS / low-confidence / conflict events, because those
+    # signals live in health_events rather than in the episode evidence.
+    quality_event_keys = nlos_keys | low_conf_keys | conflict_keys
+    for rec in records:
+        key = rec.get("event_id") or rec["episode_id"]
+        if key in quality_event_keys:
+            flagged_records.add(rec["episode_id"])
+
     nlos = len(nlos_keys)
     low_conf = len(low_conf_keys)
     conflict = len(conflict_keys)
