@@ -25,9 +25,24 @@ python3 -m http.server 8000 --directory showcase
 # → http://127.0.0.1:8000
 ```
 
-Everything — layout, palette, typography, the trend chart (inline SVG) — lives
-in this one file. It has no external assets, no fonts to download, and no
-JavaScript dependencies.
+Everything — layout, palette, typography, the trend chart (inline SVG), and
+both languages — lives in this one file. It has no external assets, no fonts
+to download, and no JavaScript dependencies.
+
+### Language
+
+The page is bilingual. The **EN / 中文** button in the navigation switches the
+entire document, including `<title>` and `<html lang>`:
+
+| How | Effect |
+|-----|--------|
+| Click **EN / 中文** | Toggles the page; the choice is remembered in `localStorage` |
+| `?lang=en` / `?lang=zh` | Forces a language for that load, and then sticks |
+
+Translation is declarative: every translatable node carries
+`data-zh` / `data-en`, and the switcher writes the active one into
+`textContent`. Nothing is fetched and no key catalogue is needed, so the file
+stays a single artifact you can email or drop on a USB stick.
 
 ---
 
@@ -67,6 +82,9 @@ imported from a UI kit.
   viewport.
 - **No horizontal overflow** at 390px. The Table 2 matrix is the one element
   that pans sideways, inside its own scroll container.
+- **The language toggle survives on mobile.** Below 660px the section anchors
+  are dropped but the toggle is kept, centred in the nav — it is the one
+  control that must always be reachable.
 
 ---
 
@@ -98,8 +116,13 @@ xdg-open showcase/index.html
 start showcase\index.html
 ```
 
-样式、配色、排版、趋势图（内联 SVG）全部在这一个文件里，无外部资源、无字体下载、
-无 JS 依赖。
+**双语切换**：导航栏的 **EN / 中文** 按钮切换整页，连 `<title>` 和 `<html lang>`
+一起换；选择记在 `localStorage`，也支持 `?lang=en` / `?lang=zh` 强制指定。翻译是声明式的
+——每个可译节点带 `data-zh` / `data-en`，切换时写入 `textContent`，不发起任何请求、也不
+需要词典文件，页面始终是单个可离线分发的文件。
+
+样式、配色、排版、趋势图（内联 SVG）、双语内容全部在这一个文件里，无外部资源、
+无字体下载、无 JS 依赖。
 
 **页面主张**：Hero 交代 7 日观察 / 3 类非接触传感 / 2,686 个有效状态点 / 6 个筛查方向；
 `#observation` 说明弱信号如何演化为联合偏离（睡眠先变 → 活动下降 26% → 呼吸与体温同步越阈）；
