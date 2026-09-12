@@ -110,8 +110,35 @@ When the Diagnosis Agent needs to resolve conflicting estimates across modalitie
 
 ### Report Agent
 
-- Generates weekly reports by aggregating `EpisodeLog` records (last 7 days, severity counts).
-- Answers natural-language questions via keyword match (发烧/心率/跌倒/血压). *Stub — replaceable with LLM in production.*
+The Report Agent closes the loop by turning triage records into longitudinal memory. Two rendering paths share **one** evidence context, so they can never disagree on counts, tiers, or traces:
+
+| Path | Entry point | Output |
+|------|-------------|--------|
+| **Primary — agent report** | `ReportAgent.generate_weekly_report(..., llm_provider=...)` | English markdown prose from the LLM, grounded in the canonical context |
+| **Fallback — deterministic** | `render_fallback_report(context)` | English markdown, same blocks, no provider required |
+
+Both emit the blocks declared in `REPORT_BLOCKS`:
+
+```
+summary · evidence_trail · sensing_quality · action_routing · uncertainty
+· vital_trends · personal_baseline · validation · indicator_coverage · privacy_boundary
+```
+
+- `build_report_context(episodes, events, reference_ts)` is the single source of truth. It is fully deterministic and provider-free.
+- The **evidence trail** block renders the paper's traceable chain explicitly: Nurse event → evidence anchors → triage tier → delivery channel → persisted `EpisodeLog`, including the reflex-path flag and the tools used.
+- Provider failures and timeouts fall through to the deterministic renderer; LLM prose never surfaces as report content when it is empty or missing.
+- Wording is **care support**, not diagnosis. `answer_question` uses the same care-support vocabulary.
+
+### Published validation results
+
+`agent_layer/validation_results.py` holds the paper's reported numbers as a single typed source of truth:
+
+- Table 1 — heart-rate / respiratory-rate MAE and RMSD per branch and fused, plus fall-recognition accuracy
+- §4.1 — multi-interval validation (9 intervals, 2686 one-second state rows)
+- §4.2 — Agent scenario evaluation (60 deterministic cases, 24 hidden-answer triage scenarios, 206/213 criteria, P95 latencies)
+- Table 2 — disease-relevant indicator coverage matrix
+
+These are **reported results, not live measurements**, and both rendering paths label them as such.
 
 ### Tiered Action Strategy
 
@@ -160,10 +187,12 @@ ubicomp/
 │   ├── confidence.py           # 三模态确定性置信度估计 (WiFi/mmWave/IR)
 │   ├── nurse_agent.py          # 规则引擎 (跌倒/心率/体温检测, async evaluate)
 │   ├── diagnosis_agent.py      # ReAct Think/Act/Decide 循环 (max 8 steps)
-│   ├── tools.py                # @tool 装饰器 + ToolRegistry + 5 default tools
+│   ├── tools.py                # @tool 装饰器 + ToolRegistry + 9 tools
 │   ├── tiered_action.py        # L0-L4 分级行动策略
 │   ├── llm_provider.py         # DeepSeekProvider + MockProvider (OpenAI 兼容)
-│   └── report_agent.py         # 周报生成 + 关键词 Q&A
+│   ├── clinical_policy.py      # 临床参考层 (RCP NEWS2 reference / NICE NG249)
+│   ├── validation_results.py   # 论文已发表结果 (Table 1 / §4.1 / §4.2 / Table 2)
+│   └── report_agent.py         # 周报: 共享证据上下文 + LLM prose / 确定性回退
 ├── sensing_simulator/          # 感知模拟器 (论文演示用)
 │   ├── sensor_aligner.py       # 多文件时间窗对齐 (HR + fall + temp)
 │   ├── sensor_hub.py           # 数据汇聚 + SQLite 持久化 + NurseAgent 触发
@@ -174,17 +203,13 @@ ubicomp/
 ├── web/                        # Web UI
 │   ├── app.py                  # FastAPI 入口 (3 routes: /, /api/replay/start, /api/health)
 │   └── templates/dashboard.html # 医生工作站 Jinja2 模板
-├── tests/                      # 测试 (66 cases, pytest + pytest-asyncio)
-│   ├── test_state_objects.py   # 4 tests
-│   ├── test_db.py              # 3 tests
-│   ├── test_event_bus.py       # 4 tests
-│   ├── test_nurse_agent.py     # 9 tests
-│   ├── test_tools.py           # 4 tests
-│   ├── test_diagnosis_agent.py # 4 tests
-│   ├── test_report_agent.py    # 3 tests
-│   ├── test_tiered_action.py   # 3 tests
-│   ├── test_llm_provider.py    # 1 test
-│   └── test_replay.py          # 6 tests
+├── tests/                      # 测试 (165 cases, pytest + pytest-asyncio)
+│   ├── test_report_agent.py    # 14 tests — 规范区块 / LLM 路径 / 回退路径
+│   ├── test_nurse_agent.py     # 规则引擎 + z-score + 模态冲突
+│   ├── test_triage_roundtrip.py# TriageDecision 落库往返 + 证据链
+│   ├── test_tools.py           # 工具 schema + registry
+│   ├── test_web_e2e.py         # Playwright 端到端 (需浏览器)
+│   └── ...                     # baseline / fusion / replay / db / event_bus 等
 ├── main.py                     # 集成入口 (init_db → EventBus → Agents → FastAPI)
 ├── config.yaml                 # 配置 (LLM/DB/Nurse/Diagnosis/Web)
 ├── requirements.txt
@@ -200,7 +225,7 @@ ubicomp/
 - **FastAPI + Jinja2** — Web doctor workstation
 - **SQLite (WAL mode)** — Local persistent storage with PRAGMA foreign_keys
 - **DeepSeek V4 API** — LLM Provider via OpenAI-compatible HTTP endpoint
-- **pytest + pytest-asyncio** — 66 tests across 10 test files
+- **pytest + pytest-asyncio** — 165 tests across 18 test files
 
 ## Key Design Decisions
 
@@ -240,7 +265,17 @@ make run
 
 ```
 pytest tests/ -v
-# 66 passed in ~39s
+# 165 tests collected
+```
+
+The Agent-layer suites (`test_report_agent.py`, `test_diagnosis_agent.py`, `test_fusion_engine.py`, `test_tiered_action.py`) are provider-free and run offline. A group of DB-fixture tests (`test_baseline_provider.py`, `test_triage_roundtrip.py`, the `TestNurseAgentZScore` fixtures, and the `test_tools.py` snapshot assertions) seed parent rows directly and are sensitive to an already-populated `data/supersense.db` — run them against a clean database.
+
+Report Agent tests specifically:
+
+```
+pytest tests/test_report_agent.py -v
+# 14 passed — canonical blocks, evidence trail, quality aggregation,
+#              LLM path, provider-failure fallback, Q&A
 ```
 
 ## Data Privacy & MCP Vision
