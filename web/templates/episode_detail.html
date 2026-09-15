@@ -1,46 +1,46 @@
 {% extends "base.html" %}
-{% block title %}诊断详情{% endblock %}
+{% block title %}{{ L('诊断详情', 'Episode detail') }}{% endblock %}
 {% block head_extra %}
 <style>
     .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .info-item { padding: 8px 0; }
-    .info-item .label { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; }
+    .info-item .label { font-size: var(--fs-12); color: var(--muted); font-weight: 600; }
     .info-item .val { font-size: 16px; font-weight: 600; margin-top: 2px; }
-    .info-item .val small { font-weight: 400; color: var(--text-secondary); font-size: 13px; }
+    .info-item .val small { font-weight: 400; color: var(--ink-soft); font-size: 13px; }
     .value-group { display: flex; gap: 24px; flex-wrap: wrap; }
     .value-item { text-align: center; min-width: 60px; }
     .value-item .num { font-size: 24px; font-weight: 700; }
-    .value-item .lbl { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
-    .value-item .extra { font-size: 12px; color: var(--text-secondary); }
-    .chain-step { padding: 8px 0; border-bottom: 1px solid #f1f5f9; font-size: 14px; }
+    .value-item .lbl { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .value-item .extra { font-size: 12px; color: var(--ink-soft); }
+    .chain-step { padding: 8px 0; border-bottom: 1px solid var(--surface-sunk); font-size: 14px; }
     .chain-step:last-child { border-bottom: none; }
-    .chain-step .step-num { display: inline-flex; width: 22px; height: 22px; align-items: center; justify-content: center; background: #e0f2fe; color: #0369a1; border-radius: 50%; font-size: 11px; font-weight: 600; margin-right: 8px; flex-shrink: 0; }
-    .evidence-section { border-left: 2px solid var(--border); margin: 8px 0 8px 12px; padding-left: 14px; }
-    .basis-item { padding: 6px 0; border-bottom: 1px solid #f8fafc; font-size: 13px; }
+    .chain-step .step-num { display: inline-flex; width: 22px; height: 22px; align-items: center; justify-content: center; background: var(--sense-soft); color: var(--sense-ink); border-radius: 50%; font-size: var(--fs-12); font-weight: 600; margin-right: 8px; flex-shrink: 0; }
+    .evidence-section { border-left: 2px solid var(--line); margin: 8px 0 8px 12px; padding-left: 14px; }
+    .basis-item { padding: 6px 0; border-bottom: 1px solid var(--surface-sunk); font-size: 13px; }
     .basis-item:last-child { border-bottom: none; }
-    .source-tag-sm { display: inline-block; padding: 0 5px; border-radius: 3px; font-size: 10px; font-weight: 600; background: #f1f5f9; font-family: monospace; margin-right: 4px; }
+    .source-tag-sm { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: var(--fs-12); font-weight: 600; background: var(--sense-soft); font-family: monospace; margin-right: 4px; }
     .pm-row { display: flex; gap: 16px; margin-top: 6px; flex-wrap: wrap; }
-    .pm-col { flex: 1; min-width: 120px; padding: 8px; border-radius: 6px; background: #f8fafc; }
-    .pm-col .h { font-size: 11px; color: var(--text-muted); font-weight: 600; margin-bottom: 2px; }
+    .pm-col { flex: 1; min-width: 120px; padding: 8px; border-radius: 6px; background: var(--surface-sunk); }
+    .pm-col .h { font-size: var(--fs-12); color: var(--muted); font-weight: 600; margin-bottom: 2px; }
     .pm-col .v { font-size: 16px; font-weight: 700; }
-    .sep { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+    .sep { border: none; border-top: 1px solid var(--line); margin: 16px 0; }
     .json-collapse { margin-top: 8px; }
-    .json-collapse summary { font-size: 12px; color: var(--text-secondary); cursor: pointer; }
-    .json-collapse pre { font-size: 11px; max-height: 200px; overflow: auto; background: #f8fafc; padding: 8px; border-radius: 4px; margin-top: 4px; }
+    .json-collapse summary { font-size: 12px; color: var(--ink-soft); cursor: pointer; }
+    .json-collapse pre { font-size: var(--fs-12); max-height: 200px; overflow: auto; background: var(--surface-sunk); padding: 8px; border-radius: 4px; margin-top: 4px; }
     @media print { .no-print { display: none; } }
 </style>
 {% endblock %}
 {% block content %}
 <div class="flex flex-wrap mb-16">
-    <a href="/episodes" class="btn btn-ghost btn-sm">← 返回事件列表</a>
-    <span class="ml-auto" style="font-size:13px;color:var(--text-muted);">Episode: {{ episode.episode_id }}</span>
+    <a href="/episodes" class="btn btn-ghost btn-sm">← {{ L('返回事件列表', 'Back to episodes') }}</a>
+    <span class="ml-auto" style="font-size:13px;color:var(--muted);">Episode: {{ episode.episode_id }}</span>
 </div>
 
 <!-- Header -->
 <div class="card mb-16">
     <div class="flex flex-wrap" style="justify-content:space-between;">
         <div>
-            <h1>诊断详情</h1>
+            <h1>{{ L('诊断详情', 'Episode detail') }}</h1>
             <div class="text-muted text-sm mt-8">
                 {% set et = health_event.event_type if health_event else episode.episode_id %}
                 {{ et | event_label }} · {{ episode.start_time[:19] if episode.start_time else '—' }}
@@ -54,15 +54,27 @@
     </div>
 </div>
 
+{# Evidence-source vocabulary. Mirrors agent_layer.report_agent.SOURCE_LABELS
+   so the detail page labels a source the same way the weekly report does.
+   Unknown codes fall back to the raw code, which stays traceable. #}
+{% set SOURCE_LABELS = {
+  'RCP_NEWS2_2017_REFERENCE': L('绝对生理参考区间（RCP NEWS2 2017）', 'Absolute physiological reference band (RCP NEWS2 2017)'),
+  'NICE_NG249_2025':          L('跌倒评估证据需求（NICE NG249 2025）', 'Fall assessment evidence needs (NICE NG249 2025)'),
+  'RESIDENT_HISTORY':         L('个人纵向基线', 'Personal longitudinal baseline'),
+  'SENSOR_FUSION':            L('跨模态测量可靠性', 'Cross-modal measurement reliability'),
+  'ACTIVITY_CONTEXT':         L('活动与姿势上下文', 'Activity and posture context'),
+  'PROJECT_POLICY':           L('项目分级策略', 'Project triage policy'),
+} %}
+
 <!-- Clinical Basis (NEW) -->
 {% set clinical_basis = episode.decision.get('clinical_basis', []) %}
 {% if clinical_basis %}
 <div class="card mb-16">
-    <div class="card-header"><h2>临床依据</h2></div>
+    <div class="card-header"><h2>{{ L('临床依据', 'Clinical basis') }}</h2></div>
     <div class="card-body">
         {% for item in clinical_basis %}
         <div class="basis-item">
-            <span class="source-tag-sm">{{ item.source }}</span>
+            <span class="source-tag-sm">{{ SOURCE_LABELS.get(item.source, item.source) }}</span>
             <span class="fw-600">{{ item.type }}</span>: {{ item.finding }}
         </div>
         {% endfor %}
@@ -73,14 +85,14 @@
 <!-- Event info + decision -->
 <div class="grid-2 mb-16">
     <div class="card">
-        <div class="card-header"><h2>事件信息</h2></div>
+        <div class="card-header"><h2>{{ L('事件信息', 'Event information') }}</h2></div>
         <div class="card-body">
             <div class="info-item">
-                <div class="label">触发原因</div>
+                <div class="label">{{ L('触发原因', 'Trigger reason') }}</div>
                 <div class="val"><small>{{ health_event.trigger_reason if health_event else '—' }}</small></div>
             </div>
             <div class="info-item">
-                <div class="label">规则标记</div>
+                <div class="label">{{ L('规则标记', 'Rule markers') }}</div>
                 <div class="val">
                     {% set markers = health_event.rule_markers if health_event else {} %}
                     {% if markers.hr_z_score %}z= {{ markers.hr_z_score }}{% endif %}
@@ -89,19 +101,19 @@
                 </div>
             </div>
             <div class="info-item">
-                <div class="label">行动</div>
-                <div class="val">{{ episode.action.get('channel', '—') }} <small>复查 {{ episode.action.get('recheck_after_sec', episode.action.get('recheck_after', '—')) }}s</small></div>
+                <div class="label">{{ L('行动', 'Action') }}</div>
+                <div class="val">{{ episode.action.get('channel', '—') }} <small>{{ L('复查', 'Recheck in') }} {{ episode.action.get('recheck_after_sec', episode.action.get('recheck_after', '—')) }}s</small></div>
             </div>
         </div>
     </div>
     <div class="card">
-        <div class="card-header"><h2>事件解释</h2></div>
+        <div class="card-header"><h2>{{ L('事件解释', 'Event interpretation') }}</h2></div>
         <div class="card-body">
-            <p style="font-size:14px;line-height:1.6;color:var(--text-secondary);">{{ episode.decision.get('event_interpretation', '') }}</p>
+            <p style="font-size:14px;line-height:1.6;color:var(--ink-soft);">{{ episode.decision.get('event_interpretation', '') }}</p>
             {% set uncertainty = episode.decision.get('uncertainty', {}) %}
             {% if uncertainty.get('missing_evidence') %}
             <div class="mt-8 text-sm text-muted">
-                <strong>缺失证据:</strong> {{ uncertainty.missing_evidence | join(', ') }}
+                <strong>{{ L('缺失证据', 'Missing evidence') }}:</strong> {{ uncertainty.missing_evidence | join(', ') }}
             </div>
             {% endif %}
         </div>
@@ -112,36 +124,36 @@
 {% set sensing = episode.evidence.get('sensing_summary', {}) %}
 {% if sensing.get('hr_wifi') is not none or sensing.get('rr_wifi') is not none %}
 <div class="card mb-16">
-    <div class="card-header"><h2>每模态传感数据</h2></div>
+    <div class="card-header"><h2>{{ L('每模态传感数据', 'Per-modality sensing') }}</h2></div>
     <div class="card-body">
         <div class="pm-row">
             <div class="pm-col">
-                <div class="h">❤️ 心率</div>
-                <div class="v" style="color:#dc2626;">{{ sensing.get('heart_rate', '—') }}</div>
-                <div class="text-sm text-muted">融合值</div>
-                <div class="text-xs text-muted mt-8">WiFi: {{ sensing.get('hr_wifi', '—') }} · 毫米波: {{ sensing.get('hr_mm', '—') }}</div>
-                <div class="text-xs text-muted">HR 置信度: {{ sensing.get('hr_conf', '—') }} · 源: {{ sensing.get('hr_source', '—') }}</div>
+                <div class="h"><i data-lucide="heart-pulse"></i> {{ L('心率', 'Heart rate') }}</div>
+                <div class="v" style="color:var(--alert);">{{ sensing.get('heart_rate', '—') }}</div>
+                <div class="text-sm text-muted">{{ L('融合值', 'Fused') }}</div>
+                <div class="text-xs text-muted mt-8">WiFi: {{ sensing.get('hr_wifi', '—') }} · {{ L('毫米波', 'mmWave') }}: {{ sensing.get('hr_mm', '—') }}</div>
+                <div class="text-xs text-muted">HR {{ L('置信度', 'confidence') }}: {{ sensing.get('hr_conf', '—') }} · {{ L('源', 'source') }}: {{ sensing.get('hr_source', '—') }}</div>
             </div>
             <div class="pm-col">
-                <div class="h">🫁 呼吸率</div>
-                <div class="v" style="color:#8b5cf6;">{{ sensing.get('respiration_rate', '—') }}</div>
-                <div class="text-sm text-muted">融合值</div>
-                <div class="text-xs text-muted mt-8">WiFi: {{ sensing.get('rr_wifi', '—') }} · 毫米波: {{ sensing.get('rr_mm', '—') }}</div>
-                <div class="text-xs text-muted">RR 置信度: {{ sensing.get('rr_conf', '—') }} · 源: {{ sensing.get('rr_source', '—') }}</div>
+                <div class="h"><i data-lucide="wind"></i> {{ L('呼吸率', 'Respiration rate') }}</div>
+                <div class="v" style="color:var(--violet);">{{ sensing.get('respiration_rate', '—') }}</div>
+                <div class="text-sm text-muted">{{ L('融合值', 'Fused') }}</div>
+                <div class="text-xs text-muted mt-8">WiFi: {{ sensing.get('rr_wifi', '—') }} · {{ L('毫米波', 'mmWave') }}: {{ sensing.get('rr_mm', '—') }}</div>
+                <div class="text-xs text-muted">RR {{ L('置信度', 'confidence') }}: {{ sensing.get('rr_conf', '—') }} · {{ L('源', 'source') }}: {{ sensing.get('rr_source', '—') }}</div>
             </div>
             <div class="pm-col">
-                <div class="h">🌡️ 体温</div>
-                <div class="v" style="color:#f97316;">{{ sensing.get('body_temp', '—') }}</div>
-                <div class="text-sm text-muted">红外</div>
+                <div class="h"><i data-lucide="thermometer"></i> {{ L('体温', 'Surface temperature') }}</div>
+                <div class="v" style="color:var(--agent);">{{ sensing.get('body_temp', '—') }}</div>
+                <div class="text-sm text-muted">{{ L('红外', 'Infrared') }}</div>
                 <div class="text-xs text-muted mt-8">Thermal conf: {{ sensing.get('thermal_confidence', '—') }}</div>
             </div>
             <div class="pm-col">
-                <div class="h">📡 置信度</div>
+                <div class="h"><i data-lucide="radio-tower"></i> {{ L('置信度', 'Confidence') }}</div>
                 <div class="v" style="font-size:18px;">{{ sensing.get('wifi_confidence', '—') }}</div>
                 <div class="text-sm text-muted">WiFi</div>
-                <div class="text-xs text-muted mt-8">毫米波: {{ sensing.get('mmwave_confidence', '—') }}</div>
-                {% if sensing.get('nlos_flag') %}<div class="text-xs" style="color:var(--warn);">⚠ NLOS</div>{% endif %}
-                {% if sensing.get('quality_event') %}<div class="text-xs" style="color:var(--warn);">⚠ 质量事件</div>{% endif %}
+                <div class="text-xs text-muted mt-8">{{ L('毫米波', 'mmWave') }}: {{ sensing.get('mmwave_confidence', '—') }}</div>
+                {% if sensing.get('nlos_flag') %}<div class="text-xs"><span class="chip chip--sense">NLOS</span></div>{% endif %}
+                {% if sensing.get('quality_event') %}<div class="text-xs"><span class="chip chip--sense">{{ L('质量事件', 'Quality event') }}</span></div>{% endif %}
             </div>
         </div>
     </div>
@@ -149,20 +161,20 @@
 {% else %}
 <!-- Fallback: basic vitals -->
 <div class="card mb-16">
-    <div class="card-header"><h2>体征快照</h2></div>
+    <div class="card-header"><h2>{{ L('体征快照', 'Vital-sign snapshot') }}</h2></div>
     <div class="card-body">
         <div class="value-group">
             <div class="value-item">
-                <div class="num" style="color:#dc2626;">{{ sensing.get('heart_rate', '—') }}</div>
-                <div class="lbl">心率 (bpm)</div>
+                <div class="num" style="color:var(--alert);">{{ sensing.get('heart_rate', '—') }}</div>
+                <div class="lbl">{{ L('心率', 'Heart rate') }} (bpm)</div>
             </div>
             <div class="value-item">
-                <div class="num" style="color:#8b5cf6;">{{ sensing.get('respiration_rate', '—') }}</div>
-                <div class="lbl">呼吸率 (bpm)</div>
+                <div class="num" style="color:var(--violet);">{{ sensing.get('respiration_rate', '—') }}</div>
+                <div class="lbl">{{ L('呼吸率', 'Respiration rate') }} (bpm)</div>
             </div>
             <div class="value-item">
-                <div class="num" style="color:#f97316;">{{ sensing.get('body_temp', '—') }}</div>
-                <div class="lbl">体温 (°C)</div>
+                <div class="num" style="color:var(--agent);">{{ sensing.get('body_temp', '—') }}</div>
+                <div class="lbl">{{ L('体温', 'Surface temperature') }} (°C)</div>
             </div>
             <div class="value-item">
                 <div class="num" style="font-size:18px;">{{ sensing.get('wifi_confidence', '—') }}</div>
@@ -170,10 +182,10 @@
             </div>
             <div class="value-item">
                 <div class="num" style="font-size:18px;">{{ sensing.get('mmwave_confidence', '—') }}</div>
-                <div class="lbl">毫米波</div>
+                <div class="lbl">{{ L('毫米波', 'mmWave') }}</div>
             </div>
         </div>
-        {% if sensing.get('nlos_flag') %}<div class="mt-8 text-sm" style="color:var(--warn);">⚠ NLOS 遮挡中</div>{% endif %}
+        {% if sensing.get('nlos_flag') %}<div class="mt-8"><span class="chip chip--sense">NLOS {{ L('遮挡中', 'occlusion') }}</span></div>{% endif %}
     </div>
 </div>
 {% endif %}
@@ -183,20 +195,20 @@
 {% set abs_ref = clin.get('absolute_reference', {}) %}
 {% if abs_ref %}
 <div class="card mb-16">
-    <div class="card-header"><h2>临床参考</h2></div>
+    <div class="card-header"><h2>{{ L('临床参考', 'Clinical reference') }}</h2></div>
     <div class="card-body">
         <div class="flex flex-wrap" style="gap:8px;">
             {% for metric, result in {'hr':abs_ref.get('heart_rate',{}), 'rr':abs_ref.get('respiration_rate',{}), 'temp':abs_ref.get('body_temp',{})}.items() if result.get('status') == 'ok' %}
             <div class="pm-col" style="min-width:100px;">
-                <div class="h">{{ {'hr':'心率','rr':'呼吸率','temp':'体温'}[metric] }}</div>
+                <div class="h">{{ {'hr':L('心率','Heart rate'),'rr':L('呼吸率','Respiration rate'),'temp':L('体温','Surface temperature')}[metric] }}</div>
                 <div class="v" style="font-size:14px;">{{ result.value }}</div>
                 <div class="text-xs text-muted">{{ result.band }} (score {{ result.reference_score }})</div>
             </div>
             {% endfor %}
         </div>
         <div class="text-xs text-muted mt-8">
-            <span class="source-tag-sm">RCP_NEWS2_2017_REFERENCE</span>
-            参考区间仅表示绝对偏离，不构成完整 NEWS2 评分。
+            <span class="source-tag-sm">{{ SOURCE_LABELS['RCP_NEWS2_2017_REFERENCE'] }}</span>
+            {{ L('参考区间仅表示绝对偏离，不构成完整 NEWS2 评分。', 'The reference band shows absolute deviation only; it is not a complete NEWS2 score.') }}
         </div>
     </div>
 </div>
@@ -207,19 +219,19 @@
 {% set pb = ctx.get('personal_baseline', {}) %}
 {% if pb %}
 <div class="card mb-16">
-    <div class="card-header"><h2>个人上下文</h2></div>
+    <div class="card-header"><h2>{{ L('个人上下文', 'Personal context') }}</h2></div>
     <div class="card-body">
         {% for metric, bl in pb.items() if bl is mapping %}
         <div class="basis-item">
-            <span class="source-tag-sm">RESIDENT_HISTORY</span>
-            <strong>{{ {'hr':'心率','rr':'呼吸率','temp':'体温'}.get(metric, metric) }}</strong>:
-            当前 {{ bl.value }}, 基线 {{ bl.mean }}±{{ bl.std }}, z={{ "%.2f"|format(bl.z_score) }}
+            <span class="source-tag-sm">{{ SOURCE_LABELS['RESIDENT_HISTORY'] }}</span>
+            <strong>{{ {'hr':L('心率','Heart rate'),'rr':L('呼吸率','Respiration rate'),'temp':L('体温','Surface temperature')}.get(metric, metric) }}</strong>:
+            {{ L('当前', 'Current') }} {{ bl.value }}, {{ L('基线', 'baseline') }} {{ bl.mean }}±{{ bl.std }}, z={{ "%.2f"|format(bl.z_score) }}
         </div>
         {% endfor %}
         {% if ctx.get('duration_sec') %}
         <div class="basis-item">
-            <span class="source-tag-sm">PROJECT_POLICY</span>
-            <strong>持续性</strong>: {{ ctx.duration_sec }}s{% if ctx.duration_sec >= 300 %} (≥5min, 持续){% endif %}
+            <span class="source-tag-sm">{{ SOURCE_LABELS['PROJECT_POLICY'] }}</span>
+            <strong>{{ L('持续性', 'Persistence') }}</strong>: {{ ctx.duration_sec }}s{% if ctx.duration_sec >= 300 %} {{ L('(≥5min, 持续)', '(≥5 min, persistent)') }}{% endif %}
         </div>
         {% endif %}
     </div>
@@ -228,7 +240,7 @@
 
 <!-- Evidence chain -->
 <div class="card mb-16">
-    <div class="card-header"><h2>证据链</h2></div>
+    <div class="card-header"><h2>{{ L('证据链', 'Evidence trail') }}</h2></div>
     <div class="card-body">
         {% set evidence_list = episode.evidence.get('tool_results', []) %}
         {% if evidence_list %}
@@ -241,7 +253,7 @@
                         {{ tr.get('result', {}).get('status', '') }}
                     </div>
                     <details class="json-collapse">
-                        <summary>查看原始结果</summary>
+                        <summary>{{ L('查看原始结果', 'View raw result') }}</summary>
                         <pre>{{ tr.get('result', {}) | tojson(indent=2) if tr.get('result') is mapping else tr.get('result', '') }}</pre>
                     </details>
                 </div>
@@ -249,8 +261,8 @@
             {% endfor %}
         {% else %}
             <div class="chain-step flex">
-                <span class="step-num">⚡</span>
-                <div><strong>反射弧</strong> — 快速反射路径，未调用 LLM 工具</div>
+                <span class="step-num"><i data-lucide="zap" style="width:13px;height:13px;"></i></span>
+                <div><strong>{{ L('反射弧', 'Reflex path') }}</strong> — {{ L('快速反射路径，未调用 LLM 工具', 'fast deterministic path, no LLM tools invoked') }}</div>
             </div>
         {% endif %}
     </div>
@@ -258,34 +270,34 @@
 
 <!-- Audit -->
 <div class="card mb-16">
-    <div class="card-header"><h2>审计</h2></div>
+    <div class="card-header"><h2>{{ L('审计', 'Audit') }}</h2></div>
     <div class="card-body">
         <div class="grid-2">
             <div class="info-item">
-                <div class="label">调用工具</div>
+                <div class="label">{{ L('调用工具', 'Tools used') }}</div>
                 <div class="val"><small>{{ episode.audit.get('tools_called', []) | join(', ') }}</small></div>
             </div>
             <div class="info-item">
-                <div class="label">步骤数</div>
+                <div class="label">{{ L('步骤数', 'Step count') }}</div>
                 <div class="val">{{ episode.audit.get('step_count', 0) }}</div>
             </div>
             <div class="info-item">
-                <div class="label">路径</div>
-                <div class="val">{{ '⚡ 反射弧' if episode.audit.get('reflex') else '🧠 LLM 推理' }}</div>
+                <div class="label">{{ L('路径', 'Path') }}</div>
+                <div class="val">{{ L('反射弧', 'Reflex path') if episode.audit.get('reflex') else L('LLM 推理', 'LLM deliberation') }}</div>
             </div>
             <div class="info-item">
-                <div class="label">安全边界</div>
+                <div class="label">{{ L('安全边界', 'Safety boundary') }}</div>
                 <div class="val">{{ episode.decision.get('safety_boundary', 'care_support_only') }}</div>
             </div>
         </div>
         <details class="json-collapse">
-            <summary>导出审计 JSON</summary>
+            <summary>{{ L('导出审计 JSON', 'Export audit JSON') }}</summary>
             <pre>{{ episode | tojson(indent=2) }}</pre>
         </details>
     </div>
 </div>
 
-<div class="no-print" style="text-align:center;color:var(--text-muted);font-size:12px;margin-top:16px;">
-    SuperSenseDoctor v0.1.0 — 仅用于论文开发测试
+<div class="no-print" style="text-align:center;color:var(--muted);font-size:12px;margin-top:16px;">
+    SuperSenseDoctor v0.1.0 — {{ L('仅用于论文开发测试', 'For paper development and testing only') }}
 </div>
 {% endblock %}

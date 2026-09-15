@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Optional
@@ -15,6 +16,7 @@ from storage.models import (
     query_recent_windows,
     query_pending_events,
     query_episodes_by_resident,
+    query_episodes_in_range,
     query_latest_sensing_window,
     query_trend_range,
     query_filtered_episodes,
@@ -27,31 +29,43 @@ from scripts.load_portable_v2 import load_portable_v2_csv
 from agent_layer.baseline_provider import BaselineProvider
 from agent_layer.fusion_engine import FusionEngine
 from agent_layer.state_objects import StateObject
-from agent_layer.report_agent import ReportAgent
+from agent_layer.report_agent import (
+    ReportAgent,
+    build_report_context,
+    render_fallback_report,
+    REPORT_BLOCKS,
+)
+from agent_layer.validation_results import headline_metrics
 from agent_layer.clinical_policy import news2_reference
+from web import i18n
 
 app = FastAPI(title="SuperSenseDoctor", version="0.1.0")
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 STATIC_DIR = Path(__file__).parent / "static"
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+templates = Jinja2Templates(
+    directory=str(TEMPLATES_DIR),
+    context_processors=[i18n.context],
+)
 
 # Register markdown filter for report rendering
 import markdown as md_lib
 templates.env.filters["markdown"] = lambda t: md_lib.markdown(t, extensions=["nl2br"]) if t else ""
 
-# Event type to Chinese label mapping (shared across templates)
+# Event type labels, bilingual. The `event_label` filter is registered on the
+# Jinja environment (once), so it reads the per-request language from the
+# ContextVar that the i18n context processor sets at render time.
 _EVENT_LABELS = {
-    "hr_abnormal": "心率异常",
-    "rr_bradypnea": "呼吸过缓",
-    "rr_tachypnea": "呼吸急促",
-    "rr_baseline_deviation": "RR基线偏离",
-    "temp_abnormal": "体温异常",
-    "fall_detected": "跌倒",
-    "fall_no_physiological_change": "跌倒（无生理变化）",
-    "low_confidence": "低置信度",
-    "nlos_occlusion": "NLOS遮挡",
-    "modality_conflict": "模态冲突",
+    "hr_abnormal": ("心率异常", "Heart-rate deviation"),
+    "rr_bradypnea": ("呼吸过缓", "Bradypnea"),
+    "rr_tachypnea": ("呼吸急促", "Tachypnea"),
+    "rr_baseline_deviation": ("RR基线偏离", "Respiratory baseline deviation"),
+    "temp_abnormal": ("体温异常", "Surface-temperature deviation"),
+    "fall_detected": ("跌倒", "Fall detected"),
+    "fall_no_physiological_change": ("跌倒（无生理变化）", "Fall without physiological change"),
+    "low_confidence": ("低置信度", "Low confidence (both branches)"),
+    "nlos_occlusion": ("NLOS遮挡", "NLOS degradation"),
+    "modality_conflict": ("模态冲突", "Modality conflict"),
 }
 _EVENT_COLORS = {
     "hr_abnormal": "#ef4444",
@@ -67,7 +81,10 @@ _EVENT_COLORS = {
 }
 
 def _event_label(t: str) -> str:
-    return _EVENT_LABELS.get(t, t or "未知")
+    pair = _EVENT_LABELS.get(t)
+    if pair is None:
+        return t or i18n.pick("未知", "Unknown")
+    return i18n.pick(pair[0], pair[1])
 
 def _event_color(t: str) -> str:
     return _EVENT_COLORS.get(t, "#94a3b8")
@@ -97,7 +114,19 @@ async def dashboard(request: Request):
     avg_hr = round(sum(hr_values) / len(hr_values), 1) if hr_values else None
 
     import json
-    recent_episodes_json = json.dumps(episodes[:10], ensure_ascii=False, default=str)
+    # The events panel and the weekly counts need the joined health-event type,
+    # which a plain episode SELECT does not carry. Reuse the enriched query the
+    # episodes API already uses so the dashboard and /api/episodes cannot
+    # disagree about what a record's event type is.
+    try:
+        enriched, _ = query_filtered_episodes("resident_01", limit=10)
+        for ep in enriched:
+            for key in ("decision", "evidence", "action", "audit"):
+                if isinstance(ep.get(key), str):
+                    ep[key] = json.loads(ep[key])
+    except Exception:
+        enriched = episodes[:10]
+    recent_episodes_json = json.dumps(enriched, ensure_ascii=False, default=str)
 
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
@@ -610,38 +639,103 @@ async def episode_detail_page(request: Request, episode_id: str):
 
 @app.get("/report", response_class=HTMLResponse)
 async def report_page(request: Request):
-    """周报 — 真实 7 天窗口，区分最高风险级别与最高频级别。"""
-    from datetime import timedelta
+    """Paper-ready weekly care report grounded in sensing and episode evidence."""
+    resident_id = "resident_01"
 
-    episodes = query_episodes_by_resident("resident_01", 200)
-    for ep in episodes:
-        for key in ("decision", "evidence", "action", "audit"):
-            if isinstance(ep.get(key), str):
-                try:
-                    ep[key] = json.loads(ep[key])
-                except (json.JSONDecodeError, TypeError):
-                    pass
+    # Window selection and JSON decoding live in the Agent layer
+    # (agent_layer.report_data), so the report is correct regardless of which
+    # caller renders it. Previously this route fetched the newest 200 rows and
+    # then filtered to 7 days, which silently truncated a busy week.
+    window = ReportAgent().load_window(resident_id)
+    episodes = window.episodes
+    ref_ts = window.reference_ts
+    week_ago = window.start
+    ref_iso = window.end
+    latest_window = query_latest_sensing_window(resident_id) or {}
 
-    # Shared reference timestamp: latest episode start_time or now
-    ref_ts = datetime.now()
-    if episodes and episodes[0].get("start_time"):
-        try:
-            ref_ts = datetime.fromisoformat(str(episodes[0]["start_time"]))
-        except (ValueError, TypeError):
-            pass
-    week_ago = (ref_ts - timedelta(days=7)).isoformat()
-    ref_iso = ref_ts.isoformat()
+    sensing_rows = query_trend_range(resident_id, reference=ref_ts, minutes=7 * 24 * 60, max_points=360)
+    with get_db() as conn:
+        sensing_total = conn.execute(
+            "SELECT COUNT(*) FROM sensing_windows WHERE resident_id=? AND timestamp>=? AND timestamp<=?",
+            (resident_id, week_ago, ref_iso),
+        ).fetchone()[0]
 
-    # Filter episodes to 7-day window
-    week_episodes = [
-        ep for ep in episodes
-        if week_ago <= str(ep.get("start_time", "")) <= ref_iso
+    def _values(field):
+        return [float(row[field]) for row in sensing_rows if row.get(field) is not None]
+
+    def _metric(field, unit):
+        values = _values(field)
+        if not values:
+            return {"field": field, "unit": unit, "count": 0, "mean": None, "min": None, "max": None, "latest": None}
+        latest = next((float(r[field]) for r in reversed(sensing_rows) if r.get(field) is not None), None)
+        return {
+            "field": field, "unit": unit, "count": len(values), "latest": latest,
+            "mean": round(sum(values) / len(values), 1), "min": round(min(values), 1), "max": round(max(values), 1),
+        }
+
+    metric_cards = [
+        {"name": "Heart rate", **_metric("hr", "bpm")},
+        {"name": "Respiration", **_metric("rr", "/min")},
+        {"name": "Temperature", **_metric("body_temp", "°C")},
     ]
+    quality_count = sum(1 for row in sensing_rows if row.get("quality_event"))
+    nlos_windows = sum(1 for row in sensing_rows if row.get("nlos_flag"))
+    hr_confs, rr_confs = _values("hr_conf"), _values("rr_conf")
+    sources = {}
+    hr_sources, rr_sources = {}, {}
+    for row in sensing_rows:
+        source = row.get("source") or "unknown"
+        sources[source] = sources.get(source, 0) + 1
+        for field, bucket in (("hr_source", hr_sources), ("rr_source", rr_sources)):
+            value = row.get(field)
+            if value:
+                bucket[value] = bucket.get(value, 0) + 1
+    modality_coverage = {
+        "WiFi": sum(1 for r in sensing_rows if r.get("hr_wifi") is not None or r.get("rr_wifi") is not None),
+        "mmWave": sum(1 for r in sensing_rows if r.get("hr_mm") is not None or r.get("rr_mm") is not None),
+        "Thermal": sum(1 for r in sensing_rows if r.get("body_temp") is not None),
+    }
+    sensing_summary = {
+        "total": sensing_total,
+        "sampled": len(sensing_rows),
+        "start": sensing_rows[0]["timestamp"] if sensing_rows else None,
+        "end": sensing_rows[-1]["timestamp"] if sensing_rows else None,
+        "quality_count": quality_count,
+        "quality_rate": round(quality_count / len(sensing_rows) * 100, 1) if sensing_rows else 0,
+        "nlos_count": nlos_windows,
+        "avg_hr_conf": round(sum(hr_confs) / len(hr_confs) * 100) if hr_confs else None,
+        "avg_rr_conf": round(sum(rr_confs) / len(rr_confs) * 100) if rr_confs else None,
+        "sources": sources,
+        "modality_coverage": modality_coverage,
+        "hr_sources": hr_sources,
+        "rr_sources": rr_sources,
+    }
+
+    baseline_provider = BaselineProvider()
+    baseline_summary = []
+    for card in metric_cards:
+        baseline = None
+        if card["latest"] is not None:
+            baseline = baseline_provider.compute_metric(resident_id, card["field"], card["latest"], ref_ts)
+        baseline_summary.append({**card, "baseline": baseline})
+
+    # Passed as a plain dict: the template renders it with Jinja's `tojson`,
+    # which escapes for the HTML script context (a raw `| safe` dump can be
+    # broken by a `</script>` sequence in the data).
+    trend_data = {
+        "timestamps": [row.get("timestamp") for row in sensing_rows],
+        "hr": [row.get("hr") for row in sensing_rows],
+        "rr": [row.get("rr") for row in sensing_rows],
+        "quality": [bool(row.get("quality_event")) for row in sensing_rows],
+    }
+
+    # `episodes` already IS the 7-day window (selected by time range above).
+    week_episodes = episodes
 
     # Levels
     level_counts = {"L0": 0, "L1": 0, "L2": 0, "L3": 0, "L4": 0}
     highest_risk = "L0"
-    label_by_level = {"L0": "记录", "L1": "观察", "L2": "提醒", "L3": "通知", "L4": "紧急"}
+    label_by_level = {"L0": "Log", "L1": "Observe", "L2": "Prompt", "L3": "Notify", "L4": "Emergency"}
     for ep in week_episodes:
         lv = str(ep.get("decision", {}).get("level", "L0"))[:2]
         if lv in level_counts:
@@ -688,31 +782,52 @@ async def report_page(request: Request):
                 break
         event_dicts.append(ed)
 
-    # ── Build clinical decision entries for LLM report ──
-    try:
-        from agent_layer.llm_provider import DeepSeekProvider
-        import os, yaml
-        config = yaml.safe_load(open(Path(__file__).parent.parent / "config.yaml"))
-        llm_cfg = config["llm"]
-        report_llm = DeepSeekProvider(
-            api_key=os.getenv("DEEPSEEK_API_KEY", llm_cfg.get("api_key", "")),
-            model=llm_cfg["model"],
-            base_url=llm_cfg["base_url"],
-            temperature=0.3,
-        )
-    except Exception:
-        report_llm = None
-
-    report_text = await ReportAgent().generate_weekly_report(
-        week_episodes,
-        events=event_dicts,
-        llm_provider=report_llm,
-        reference_ts=ref_ts,
+    # ── Agent report (primary rendering path) ──
+    # One canonical evidence context feeds both renderings:
+    #   primary  = ReportAgent markdown  (LLM prose when a provider answers)
+    #   fallback = structured HTML blocks in report.html
+    # The deterministic markdown renderer is the default so page load never
+    # depends on provider availability. `?llm=1` opts into provider prose.
+    lang = i18n.resolve(
+        request.query_params.get("lang"),
+        request.cookies.get(i18n.COOKIE_NAME),
     )
+    report_context = build_report_context(episodes, event_dicts, ref_ts, lang=lang)
+    report_text = render_fallback_report(report_context, lang)
+    report_source = "deterministic"
+
+    if request.query_params.get("llm") and os.getenv("DEEPSEEK_API_KEY"):
+        try:
+            from agent_layer.llm_provider import DeepSeekProvider
+            import yaml
+            with open(
+                Path(__file__).parent.parent / "config.yaml",
+                encoding="utf-8",
+            ) as config_file:
+                _cfg = yaml.safe_load(config_file)
+            _llm_cfg = _cfg["llm"]
+            provider = DeepSeekProvider(
+                api_key=os.getenv("DEEPSEEK_API_KEY", ""),
+                model=_llm_cfg["model"],
+                base_url=_llm_cfg["base_url"],
+                temperature=0.3,
+            )
+            llm_text = await ReportAgent().generate_weekly_report(
+                episodes, event_dicts, llm_provider=provider,
+                reference_ts=ref_ts, lang=lang,
+            )
+            if llm_text and llm_text.strip():
+                report_text = llm_text
+                report_source = "llm"
+        except Exception:
+            report_source = "deterministic"
+
+    kpi_metrics = headline_metrics()
 
     nlos_count = sum(1 for e in events if e.get("nlos_flag") or e.get("event_type") == "nlos_occlusion")
     low_conf_count = sum(1 for e in events if e.get("event_type") == "low_confidence")
     conflict_count = sum(1 for e in events if e.get("event_type") == "modality_conflict")
+    fall_count = sum(1 for e in events if e.get("event_type") in ("fall_detected", "fall_no_physiological_change"))
 
     # Event type breakdown
     type_counts = {}
@@ -728,9 +843,65 @@ async def report_page(request: Request):
         channel_counts[ch] = channel_counts.get(ch, 0) + 1
     action_breakdown = [{"channel": k, "count": v} for k, v in sorted(channel_counts.items(), key=lambda x: -x[1])]
 
+    representative_episode = None
+    if week_episodes:
+        representative_episode = max(
+            week_episodes,
+            key=lambda ep: (int(str(ep.get("decision", {}).get("level", "L0"))[1:2] or 0), str(ep.get("start_time", ""))),
+        )
+
+    fall_summary = None
+    fall_event = next(
+        (event for event in events if event.get("event_type") in ("fall_detected", "fall_no_physiological_change")),
+        None,
+    )
+    if fall_event:
+        linked_episode = next(
+            (episode for episode in week_episodes if episode.get("event_id") == fall_event.get("event_id")),
+            None,
+        )
+        fall_level = "Recorded"
+        if linked_episode and isinstance(linked_episode.get("decision"), dict):
+            fall_level = str(linked_episode["decision"].get("level", "Recorded"))
+        fall_time = str(fall_event.get("timestamp", ""))
+        try:
+            fall_time = datetime.fromisoformat(fall_time).strftime("%b %d · %H:%M")
+        except (ValueError, TypeError):
+            pass
+        fall_summary = {
+            "time": fall_time,
+            "level": fall_level,
+            "label": "Fall detected" if fall_event.get("event_type") == "fall_detected" else "Fall without physiological change",
+        }
+
+    if not sensing_rows:
+        report_status = {"tone": "neutral", "label": "INSUFFICIENT EVIDENCE", "title": "No sensing evidence is available for this period", "detail": "Trend, baseline, and triage conclusions cannot be established."}
+    elif highest_risk in ("L3", "L4"):
+        report_status = {"tone": "danger", "label": highest_risk, "title": "High-priority events require human follow-up", "detail": "Review the representative evidence chain and its missing information."}
+    elif quality_count:
+        report_status = {"tone": "warn", "label": "QUALITY REVIEW", "title": "Continuous vital coverage with windows requiring review", "detail": "Quality events affect measurement reliability; they do not imply a health abnormality."}
+    else:
+        report_status = {"tone": "ok", "label": "STABLE", "title": "No care event required escalation this week", "detail": "This assessment is limited to available modalities and the project triage policy."}
+
     return templates.TemplateResponse("report.html", {
         "request": request,
+        # ── Agent report (primary rendering) ──
         "report_text": report_text,
+        "report_source": report_source,
+        "report_blocks": REPORT_BLOCKS,
+        "kpi_metrics": kpi_metrics,
+        # ── Canonical evidence context (drives both renderings) ──
+        "ctx": report_context,
+        "summary_block": report_context["summary"],
+        "evidence_trail": report_context["evidence_trail"],
+        "sensing_quality": report_context["sensing_quality"],
+        "action_routing": report_context["action_routing"],
+        "uncertainty": report_context["uncertainty"],
+        "vital_trends": report_context["vital_trends"],
+        "personal_baseline_block": report_context["personal_baseline"],
+        "validation": report_context["validation"],
+        "privacy_boundary": report_context["privacy_boundary"],
+        # ── Web-only visual companions (charts and resident-specific sensing) ──
         "total_episodes": len(week_episodes),
         "level_counts": level_counts,
         "highest_risk_level": highest_risk,
@@ -740,7 +911,17 @@ async def report_page(request: Request):
         "nlos_count": nlos_count,
         "low_conf_count": low_conf_count,
         "conflict_count": conflict_count,
+        "fall_count": fall_count,
         "event_type_breakdown": event_type_breakdown,
         "action_breakdown": action_breakdown,
+        "metric_cards": metric_cards,
+        "baseline_summary": baseline_summary,
+        "sensing": sensing_summary,
+        "trend_data": trend_data,
+        "report_status": report_status,
+        "representative_episode": representative_episode,
+        "fall_summary": fall_summary,
+        "period_start": (ref_ts - timedelta(days=7)).strftime("%Y-%m-%d"),
+        "period_end": ref_ts.strftime("%Y-%m-%d"),
         "reference_date": ref_ts.strftime("%Y-%m-%d %H:%M"),
     })

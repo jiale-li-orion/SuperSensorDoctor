@@ -1,238 +1,11 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="{{ 'zh-CN' if lang == 'zh' else 'en' }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}SuperSenseDoctor{% endblock %} — 智慧看护工作站</title>
+    <title>{% block title %}SuperSenseDoctor{% endblock %} — {{ L('智慧看护工作站', 'Care Intelligence Workspace') }}</title>
     <link rel="preload" href="/static/echarts.min.js" as="script">
-    <style>
-        /* ═══════════════════════════════════════════════
-           SuperSenseDoctor Design System v1
-           ═══════════════════════════════════════════════ */
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, 'Inter', 'Segoe UI', system-ui, sans-serif;
-            background: #f1f5f9;
-            color: #1e293b;
-            min-height: 100vh;
-            overflow-x: hidden;
-        }
-
-        /* ── Colors ── */
-        :root {
-            --bg: #f1f5f9;
-            --surface: #ffffff;
-            --border: #e2e8f0;
-            --text: #1e293b;
-            --text-secondary: #64748b;
-            --text-muted: #94a3b8;
-            --primary: #1e293b;
-            --primary-hover: #0f172a;
-            --accent: #0d9488;          /* teal-600 — status ok */
-            --warn: #d97706;            /* amber-600 */
-            --danger: #dc2626;          /* red-600 */
-            --info: #2563eb;            /* blue-600 */
-            --radius: 8px;
-            --shadow: 0 1px 3px rgba(0,0,0,.06);
-        }
-
-        /* ── Typography ── */
-        h1 { font-size: 20px; font-weight: 600; }
-        h2 { font-size: 16px; font-weight: 600; color: #0f172a; }
-
-        /* ── Layout ── */
-        .page { max-width: 1280px; margin: 0 auto; padding: 0 24px 40px; }
-
-        /* ── Top Navigation ── */
-        .topnav {
-            background: var(--surface);
-            border-bottom: 1px solid var(--border);
-            padding: 0 24px;
-            position: sticky; top: 0; z-index: 100;
-        }
-        .topnav-inner {
-            max-width: 1280px; margin: 0 auto;
-            display: flex; align-items: center; height: 52px; gap: 24px;
-        }
-        .topnav-brand {
-            font-size: 16px; font-weight: 700; color: var(--primary);
-            text-decoration: none; display: flex; align-items: center; gap: 6px;
-        }
-        .topnav-brand small { font-weight: 400; color: var(--text-muted); font-size: 12px; }
-        .topnav-links { display: flex; gap: 4px; }
-        .topnav-links a {
-            padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 500;
-            color: var(--text-secondary); text-decoration: none; transition: all .12s;
-        }
-        .topnav-links a:hover { background: #f1f5f9; color: var(--text); }
-        .topnav-links a.active { background: var(--primary); color: white; }
-        .topnav-info {
-            margin-left: auto; display: flex; align-items: center; gap: 12px;
-            font-size: 12px; color: var(--text-muted);
-        }
-        .topnav-info .resident { font-weight: 600; color: var(--text-secondary); }
-        .conn-status {
-            display: flex; align-items: center; gap: 4px;
-        }
-        .conn-dot {
-            width: 6px; height: 6px; border-radius: 50%; display: inline-block;
-        }
-        .conn-dot.ok { background: var(--accent); }
-        .conn-dot.warn { background: var(--warn); }
-        .conn-dot.off { background: var(--text-muted); }
-
-        /* ── Buttons ── */
-        .btn {
-            padding: 8px 18px; border: none; border-radius: var(--radius);
-            font-size: 13px; font-weight: 500; cursor: pointer;
-            transition: all .12s; display: inline-flex; align-items: center; gap: 6px;
-            white-space: nowrap; text-decoration: none;
-        }
-        .btn-primary { background: var(--primary); color: white; }
-        .btn-primary:hover { background: var(--primary-hover); }
-        .btn-primary:disabled { background: var(--text-muted); cursor: not-allowed; }
-        .btn-secondary { background: white; color: var(--text-secondary); border: 1px solid var(--border); }
-        .btn-secondary:hover { background: #f8fafc; border-color: #cbd5e1; }
-        .btn-secondary:disabled { color: var(--text-muted); border-color: #f1f5f9; cursor: not-allowed; }
-        .btn-ghost { background: transparent; color: var(--text-secondary); }
-        .btn-ghost:hover { background: #f1f5f9; }
-        .btn-sm { padding: 4px 10px; font-size: 12px; }
-        .btn-icon { font-size: 14px; }
-
-        /* ── Cards ── */
-        .card {
-            background: var(--surface); border-radius: var(--radius);
-            box-shadow: var(--shadow); border: 1px solid var(--border);
-        }
-        .card-header {
-            padding: 14px 18px; border-bottom: 1px solid var(--border);
-            display: flex; justify-content: space-between; align-items: center;
-        }
-        .card-body { padding: 14px 18px; }
-
-        /* ── Badges ── */
-        .badge { display: inline-block; padding: 1px 7px; border-radius: 4px; font-size: 11px; font-weight: 600; }
-        .badge-ok { background: #dcfce7; color: #166534; }
-        .badge-warn { background: #fef3c7; color: #92400e; }
-        .badge-danger { background: #fee2e2; color: #991b1b; }
-        .badge-info { background: #dbeafe; color: #1d4ed8; }
-        .badge-neutral { background: #f1f5f9; color: #475569; }
-
-        /* ── Tables ── */
-        .table-wrap { overflow-x: auto; }
-        table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); }
-        th { font-weight: 600; color: var(--text-secondary); font-size: 12px; text-transform: uppercase; letter-spacing: .4px; white-space: nowrap; }
-        tr:hover td { background: #f8fafc; }
-        .table-empty { padding: 32px 0; text-align: center; color: var(--text-muted); }
-
-        /* ── Status indicators ── */
-        .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
-        .status-dot.ok { background: #22c55e; }
-        .status-dot.warn { background: var(--warn); }
-        .status-dot.danger { background: var(--danger); }
-        .status-dot.muted { background: var(--text-muted); }
-
-        /* ── Methodology Drawer ── */
-        .drawer-overlay {
-            position: fixed; inset: 0; background: rgba(0,0,0,.3); z-index: 200;
-            display: none;
-        }
-        .drawer-overlay.open { display: block; }
-        .drawer {
-            position: fixed; top: 0; right: -420px; width: 420px; height: 100%;
-            background: var(--surface); z-index: 201; transition: right .25s ease;
-            overflow-y: auto; box-shadow: -4px 0 20px rgba(0,0,0,.1);
-        }
-        .drawer.open { right: 0; }
-        .drawer-header {
-            padding: 18px 20px; border-bottom: 1px solid var(--border);
-            display: flex; justify-content: space-between; align-items: center;
-        }
-        .drawer-header h3 { font-size: 15px; font-weight: 600; }
-        .drawer-body { padding: 16px 20px; font-size: 13px; color: var(--text-secondary); line-height: 1.7; }
-        .drawer-body h4 { font-size: 13px; font-weight: 600; color: var(--text); margin: 16px 0 6px; }
-        .drawer-body h4:first-child { margin-top: 0; }
-        .drawer-body .source-tag { display: inline-block; padding: 0 5px; border-radius: 3px; font-size: 11px; font-weight: 600; background: #f1f5f9; font-family: monospace; }
-        .drawer-close { background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text-muted); padding: 4px; }
-
-        /* ── Tooltips ── */
-        [data-tooltip] { position: relative; cursor: help; }
-        [data-tooltip]:hover::after {
-            content: attr(data-tooltip); position: absolute; bottom: calc(100% + 6px);
-            left: 50%; transform: translateX(-50%); background: var(--primary);
-            color: white; padding: 5px 10px; border-radius: 4px; font-size: 12px;
-            white-space: nowrap; z-index: 50; pointer-events: none;
-        }
-
-        /* ── Grid helpers ── */
-        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-        .grid-3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; }
-        .flex { display: flex; align-items: center; gap: 8px; }
-        .flex-wrap { flex-wrap: wrap; }
-        .gap-4 { gap: 4px; }
-        .ml-auto { margin-left: auto; }
-        .mt-8 { margin-top: 8px; }
-        .mt-12 { margin-top: 12px; }
-        .mt-16 { margin-top: 16px; }
-        .mb-8 { margin-bottom: 8px; }
-        .mb-16 { margin-bottom: 16px; }
-        .text-muted { color: var(--text-muted); }
-        .text-sm { font-size: 13px; }
-        .text-xs { font-size: 12px; }
-        .fw-600 { font-weight: 600; }
-
-        /* ── Progress ── */
-        .progress-bar { height: 6px; background: #f1f5f9; border-radius: 3px; overflow: hidden; }
-        .progress-fill { height: 100%; border-radius: 3px; transition: width .4s ease; }
-
-        /* ── Empty state ── */
-        .empty-state {
-            text-align: center; padding: 48px 24px; color: var(--text-muted);
-        }
-        .empty-state h3 { font-size: 18px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
-        .empty-state p { font-size: 14px; line-height: 1.6; margin-bottom: 20px; }
-
-        /* ── Filters ── */
-        .filter-bar {
-            display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-        }
-        .filter-bar select, .filter-bar input {
-            padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px;
-            font-size: 13px; background: white; color: var(--text);
-        }
-        .filter-bar select:focus, .filter-bar input:focus {
-            outline: none; border-color: var(--primary);
-        }
-
-        /* ── Responsive ── */
-        @media (max-width: 1024px) {
-            .grid-2 { grid-template-columns: 1fr; }
-            .grid-3 { grid-template-columns: 1fr 1fr; }
-        }
-        @media (max-width: 768px) {
-            .grid-3 { grid-template-columns: 1fr; }
-            .topnav-links a { padding: 6px 8px; font-size: 12px; }
-            .drawer { width: 100%; right: -100%; }
-            .page { padding: 0 12px 24px; }
-            .topnav-info span.resident { display: none; }
-        }
-        @media (max-width: 480px) {
-            .topnav { padding: 0 12px; }
-            .topnav-inner { height: auto; min-height: 52px; gap: 6px; flex-wrap: wrap; padding: 8px 0 6px; }
-            .topnav-brand { flex: 1; }
-            .topnav-brand small { display: none; }
-            .topnav-info { margin-left: 0; gap: 4px; }
-            .topnav-info .conn-status, #nav-last-update { display: none; }
-            .topnav-links { order: 3; width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); }
-            .topnav-links a { padding: 6px 4px; font-size: 11px; text-align: center; white-space: nowrap; }
-            .topnav-links a svg { vertical-align: -2px; }
-        }
-        @media (prefers-reduced-motion) {
-            .drawer { transition: none; }
-            * { animation-duration: 0s !important; }
-        }
-    </style>
+    <link rel="stylesheet" href="/static/ssd.css">
     {% block head_extra %}{% endblock %}
 </head>
 <body>
@@ -245,24 +18,28 @@
             </a>
             <div class="topnav-links">
                 <a href="/" class="{% if request.url.path == '/' %}active{% endif %}" id="nav-dash">
-                    <i data-lucide="gauge" style="width:14px;height:14px;"></i> 实时概览
+                    <i data-lucide="gauge"></i><span>{{ L('实时概览', 'Overview') }}</span>
                 </a>
                 <a href="/episodes" class="{% if request.url.path == '/episodes' %}active{% endif %}" id="nav-episodes">
-                    <i data-lucide="list" style="width:14px;height:14px;"></i> 诊断事件
+                    <i data-lucide="list"></i><span>{{ L('诊断事件', 'Episodes') }}</span>
                 </a>
                 <a href="/report" class="{% if request.url.path == '/report' %}active{% endif %}" id="nav-report">
-                    <i data-lucide="file-text" style="width:14px;height:14px;"></i> 周报洞察
+                    <i data-lucide="file-text"></i><span>{{ L('周报洞察', 'Weekly Report') }}</span>
                 </a>
             </div>
             <div class="topnav-info">
-                <span class="resident"><i data-lucide="user" style="width:12px;height:12px;"></i> resident_01</span>
+                <span class="resident"><i data-lucide="user"></i> resident_01</span>
+                <span class="lang-switch" role="group" aria-label="{{ L('语言切换', 'Language switch') }}">
+                    <button type="button" class="lang-btn {{ 'on' if lang == 'zh' else '' }}" onclick="setLang('zh')" title="中文">中</button>
+                    <button type="button" class="lang-btn {{ 'on' if lang == 'en' else '' }}" onclick="setLang('en')" title="English">EN</button>
+                </span>
                 <span class="conn-status" id="conn-status">
                     <span class="conn-dot ok" id="conn-dot"></span>
-                    <span id="conn-label">在线</span>
+                    <span id="conn-label">{{ L('在线', 'Online') }}</span>
                 </span>
                 <span id="nav-last-update"></span>
-                <button class="btn btn-ghost btn-sm" onclick="toggleDrawer()" data-tooltip="系统方法与边界" aria-label="打开系统方法与边界">
-                    <i data-lucide="book-open" style="width:14px;height:14px;"></i>
+                <button class="btn btn-ghost btn-sm" onclick="toggleDrawer()" data-tooltip="{{ L('系统方法与边界', 'Method and boundaries') }}" aria-label="{{ L('打开系统方法与边界', 'Open method and boundaries') }}">
+                    <i data-lucide="book-open"></i>
                 </button>
             </div>
         </div>
@@ -277,32 +54,65 @@
     <div class="drawer-overlay" id="drawer-overlay" onclick="toggleDrawer()"></div>
     <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" aria-hidden="true">
         <div class="drawer-header">
-            <h3 id="drawer-title">方法与边界</h3>
-            <button class="drawer-close" onclick="toggleDrawer()" aria-label="关闭方法与边界"><i data-lucide="x"></i></button>
+            <h3 id="drawer-title">Method &amp; Boundaries</h3>
+            <button class="drawer-close" onclick="toggleDrawer()" aria-label="Close method and boundaries"><i data-lucide="x"></i></button>
         </div>
         <div class="drawer-body">
-            <h4>系统架构</h4>
-            <p>Sensing → StateObject → NurseAgent(规则) → DiagnosisAgent(LLM) → TriageDecision → EpisodeLog</p>
+            <h4>{{ L('系统架构', 'System architecture') }}</h4>
+            <p>{{ L('感知 → StateObject → NurseAgent(规则首筛) → HealthEvent → DiagnosisAgent(受限证据图) → TriageDecision → EpisodeLog → ReportAgent',
+                  'Sensing → StateObject → NurseAgent (deterministic first screen) → HealthEvent → DiagnosisAgent (bounded evidence graph) → TriageDecision → EpisodeLog → ReportAgent') }}</p>
 
-            <h4>各模态职责</h4>
-            <p><span class="source-tag">WiFi</span> CSI-based 呼吸/心率估计，受 NLOS 影响较小</p>
-            <p><span class="source-tag">mmWave</span> 毫米波雷达，跌倒检测 + 生命体征，NLOS 下降级</p>
-            <p><span class="source-tag">Thermal</span> 红外体温</p>
+            <h4>{{ L('各模态职责', 'Modality roles') }}</h4>
+            <p><span class="source-tag">WiFi BFI</span> {{ L('波束成形反馈信息。提供大范围运动与周期性信号线索；使用商用网卡即可，工程部署上比 CSI 更实用。',
+                  'Beamforming Feedback Information. Wide-area motion and periodic-signal cues; works with commodity hardware and is more practical for engineering deployment than CSI.') }}</p>
+            <p><span class="source-tag">mmWave</span> {{ L('提供局部胸廓运动与跌倒证据。NLOS 遮挡与被褥遮挡时降级。',
+                  'Localized chest-motion and fall evidence. Degrades under NLOS and bedding occlusion.') }}</p>
+            <p><span class="source-tag">Thermal</span> {{ L('MLX90640 32×24 红外阵列 → 体表温度趋势。',
+                  'MLX90640 32×24 IR array → body-surface temperature trend.') }}</p>
+            <p><span class="source-tag">Behavioral</span> {{ L('活动、姿势与作息上下文。作为上下文保留，绝不并入体征估计。',
+                  'Activity, posture, and routine context. Kept as context — never collapsed into the vital-sign estimate.') }}</p>
 
-            <h4>Agent 分工</h4>
-            <p><strong>NurseAgent</strong> — 规则引擎。8 条硬规则：跌倒、HR/RR/体温异常（z-score 优先）、低置信度、NLOS、模态冲突、RR 基线偏离。</p>
-            <p><strong>FusionEngine</strong> — 三步链：每模态置信度 → 跨模态一致性 → 仲裁输出。portable_v2 数据存在时使用真实每模态估计值。</p>
-            <p><strong>DiagnosisAgent</strong> — LLM 分级。反射弧(path)处理 L4 紧急事件，ReAct 循环处理其余事件。</p>
+            <h4>{{ L('融合仲裁', 'Fusion arbitration') }}</h4>
+            <p><strong>{{ L('第 1 步', 'Step 1') }}</strong> — {{ L('由置信度与 NLOS 约束构建可靠模态集合。', 'build the reliable modality set from confidence and NLOS constraints.') }}</p>
+            <p><strong>{{ L('第 2 步', 'Step 2') }}</strong> — {{ L('可靠射频分支在容差内一致时，按置信度加权。', 'if reliable radio branches agree within tolerance, weight the result by confidence.') }}</p>
+            <p><strong>{{ L('第 3 步', 'Step 3') }}</strong> — {{ L('仅剩一个分支可靠时，该分支主导。', 'if only one branch remains reliable, that branch dominates.') }}</p>
+            <p><strong>{{ L('第 4 步', 'Step 4') }}</strong> — {{ L('可信分支冲突时发出质量事件，并保留各分支证据。不确定性由此成为后续推理的显式信号。',
+                  'if plausible branches conflict, emit a quality event and preserve the evidence from each branch. Uncertainty becomes an explicit signal for later reasoning.') }}</p>
 
-            <h4>引用来源</h4>
-            <p><span class="source-tag">RCP_NEWS2_2017_REFERENCE</span> HR/RR/Temperature 绝对偏离参考区间。注意：当前系统缺乏 SpO₂、收缩压和意识评估参数，<strong>不计算完整 NEWS2 评分</strong>。</p>
-            <p><span class="source-tag">NICE_NG249_2025</span> 跌倒评估证据需求。系统通常不知道 injury、意识丧失、能否独自起身、反复跌倒历史。</p>
-            <p><span class="source-tag">RESIDENT_HISTORY</span> 个人纵向基线数据，统计偏离证据不等于疾病诊断。</p>
-            <p><span class="source-tag">SENSOR_FUSION</span> 测量可靠性证据，不是疾病证据。</p>
-            <p><span class="source-tag">PROJECT_POLICY</span> 项目特有的 z-score 阈值、5–10 分钟复查策略、L0-L4 映射。</p>
+            <h4>{{ L('Agent 分工', 'Agent split') }}</h4>
+            <p><strong>NurseAgent</strong> — {{ L('对状态对象做确定性首筛，比对项目阈值、个人基线、持续性与传感质量标志。八条规则：跌倒、HR/RR/体温偏离（z-score 优先）、低置信度、NLOS、模态冲突、呼吸基线偏离。',
+                  'deterministic first screen over the state object, comparing it with project thresholds, personal baselines, persistence, and sensing-quality flags. Eight rules: fall, HR/RR/temperature deviation (z-score first), low confidence, NLOS, modality conflict, respiratory baseline deviation.') }}</p>
+            <p><strong>DiagnosisAgent</strong> — {{ L('在受限证据图上的虚拟分诊医生，不接收原始数据流。注册工具检索个人基线、传感质量、跨模态仲裁、近期事件与最新状态。',
+                  'a virtual triage doctor over a bounded evidence graph. It never receives raw streams. Registered tools retrieve the personal baseline, sensing quality, cross-modal arbitration, recent events, and the latest state.') }}</p>
+            <p><strong>ReportAgent</strong> — {{ L('把决策转为纵向记忆，使居民提醒、家属通知与临床复核共用同一条证据链。',
+                  'turns decisions into longitudinal memory, so resident prompts, family notifications, and clinician review share one evidence trail.') }}</p>
 
-            <h4>安全边界</h4>
-            <p>本系统提供 care support，不构成医学诊断、治疗建议或用药建议。L0-L4 分级为项目策略，不应用于独立临床决策。</p>
+            <h4>{{ L('事件门控', 'Event gate') }}</h4>
+            <p>{{ L('正常窗口只更新本地历史，', 'Normal windows update local history ') }}<strong>{{ L('不调用 LLM', 'without invoking the LLM') }}</strong>{{ L('。跌倒、基线漂移、呼吸极端值、模态冲突、双射频分支弱证据与 NLOS 降级会成为带类型的 ', '. Falls, baseline shifts, extreme respiratory values, modality conflicts, weak evidence from both radio branches, and NLOS degradation become typed ') }}<code>HealthEvent</code>{{ L('。紧急组合走确定性反射弧；其余事件以受限证据包进入诊断 Agent。',
+                  's. Urgent combinations take a deterministic reflex path; the remaining events enter the Diagnosis Agent with a bounded evidence package.') }}</p>
+
+            <h4>{{ L('分级策略卡', 'Tier policy card') }}</h4>
+            <p><strong>L0</strong> {{ L('静默记录 — 仅入库。', 'Routine observation — record only.') }} <strong>L1</strong> {{ L('持续观察 — 入库并安排复查。', 'Continued observation — record with scheduled recheck.') }}</p>
+            <p><strong>L2</strong> {{ L('居民提醒 — 屏幕提示。', 'Resident prompt — resident screen.') }} <strong>L3</strong> {{ L('家属告警 — 推送家属。', 'Family notification — family push.') }}</p>
+            <p><strong>L4</strong> {{ L('紧急路由 — 紧急渠道，需授权人工确认。', 'Emergency routing — emergency channel, requires authorized human confirmation.') }}</p>
+
+            <h4>{{ L('引用来源', 'Cited sources') }}</h4>
+            <p><span class="source-tag">RCP_NEWS2_2017_REFERENCE</span> {{ L('HR/RR/体温的绝对偏离参考区间。系统缺乏 SpO₂、收缩压与意识评估参数，因此', 'Absolute deviation reference bands for HR, RR, and temperature. The system lacks SpO₂, systolic blood pressure, and consciousness assessment, so it ') }}<strong>{{ L('不计算完整 NEWS2 评分', 'does not compute a complete NEWS2 score') }}</strong>。</p>
+            <p><span class="source-tag">NICE_NG249_2025</span> {{ L('跌倒评估的证据需求。系统通常不知道受伤情况、意识丧失、能否独自起身或既往跌倒史。',
+                  'Fall assessment evidence needs. The system typically does not know injury, loss of consciousness, ability to get up, or prior fall history.') }}</p>
+            <p><span class="source-tag">RESIDENT_HISTORY</span> {{ L('个人纵向基线。统计偏离不等于疾病诊断。', 'Personal longitudinal baseline. Statistical deviation is not a diagnosis.') }}</p>
+            <p><span class="source-tag">SENSOR_FUSION</span> {{ L('测量可靠性证据，不是疾病证据。', 'Measurement reliability evidence, not disease evidence.') }}</p>
+            <p><span class="source-tag">ACTIVITY_CONTEXT</span> {{ L('可解释暂时性变化的活动与姿势上下文。', 'Activity and posture context that may explain transient changes.') }}</p>
+            <p><span class="source-tag">PROJECT_POLICY</span> {{ L('项目特有的 z-score 阈值、5–10 分钟复查策略与 L0–L4 映射。',
+                  'Project-specific z-score thresholds, 5–10 minute recheck policy, and the L0–L4 mapping.') }}</p>
+
+            <h4>{{ L('隐私与人工监督', 'Privacy and human oversight') }}</h4>
+            <p>{{ L('原始与派生感知记录保留在原型主机本地。选用外部 OpenAI 兼容模型时，诊断 Agent 只发送最小化的结构化事件上下文；本地模型可在不改动 Agent 契约的前提下替换该端点。',
+                  'Raw and derived sensing records remain local to the prototype host. When an external OpenAI-compatible model is selected, the Diagnosis Agent sends only a minimized structured event context; a local model can replace that endpoint without changing the agent contract.') }}</p>
+
+            <h4>{{ L('安全边界', 'Safety boundary') }}</h4>
+            <p>{{ L('本系统提供', 'This system provides ') }}<strong>{{ L('看护支持', 'care support') }}</strong>{{ L('，不构成医学诊断、治疗方案或用药建议；L0–L4 分级属于项目策略，不得用于独立临床决策。高风险路由需授权人工确认。',
+                  '. It is not a medical diagnosis, treatment plan, or medication advice, and the L0–L4 tiers are project policy that must not be used for independent clinical decisions. High-risk routing requires authorized human confirmation.') }}</p>
         </div>
     </aside>
 
@@ -310,6 +120,19 @@
     <script src="/static/lucide.min.js"></script>
     <script src="/static/echarts.min.js"></script>
     <script>
+        // ── i18n ──
+        // T('中文', 'English') mirrors the server-side L() helper. The active
+        // language rides in the `lang` cookie so it survives navigation.
+        window.I18N_LANG = {{ lang | tojson }};
+        function T(zh, en) { return window.I18N_LANG === 'zh' ? zh : en; }
+        function setLang(tag) {
+            document.cookie = 'lang=' + tag + ';path=/;max-age=31536000;SameSite=Lax';
+            window.I18N_LANG = tag;
+            window.location.reload();
+        }
+        window.T = T;
+        window.setLang = setLang;
+
         // Init Lucide icons
         lucide.createIcons();
 
@@ -333,21 +156,22 @@
                 const label = document.getElementById('conn-label');
                 if (d.status === 'ok') {
                     dot.className = 'conn-dot ok';
-                    label.textContent = '在线';
+                    label.textContent = T('在线', 'Online');
                 } else {
                     dot.className = 'conn-dot warn';
-                    label.textContent = '异常';
+                    label.textContent = T('异常', 'Degraded');
                 }
             } catch {
                 document.getElementById('conn-dot').className = 'conn-dot off';
-                document.getElementById('conn-label').textContent = '离线';
+                document.getElementById('conn-label').textContent = T('离线', 'Offline');
             }
         }
 
         // Update timestamp
         function updateTimestamp() {
             const el = document.getElementById('nav-last-update');
-            if (el) el.textContent = new Date().toLocaleTimeString('zh-CN', {hour12:false});
+            if (el) el.textContent = new Date().toLocaleTimeString(
+                window.I18N_LANG === 'zh' ? 'zh-CN' : 'en-GB', {hour12:false});
         }
         setInterval(pollConnection, 10000);
         setInterval(updateTimestamp, 30000);
@@ -355,20 +179,25 @@
         pollConnection();
 
         // Event type helpers (available to all templates)
+        // Semantic event colours, drawn from the paper's layer accents:
+        //   red    = health-domain anomaly (vital-sign deviation, fall)
+        //   violet = statistical / baseline deviation
+        //   blue   = measurement-domain quality event, not a health finding
+        const C_ALERT = '#a81c10', C_VIOLET = '#6d3fa8', C_SENSE = '#2b46ad';
         const EVENT_TYPES = {
-            hr_abnormal: { label: '心率异常', icon: '❤️', color: '#ef4444', badge: 'badge-danger' },
-            rr_bradypnea: { label: '呼吸过缓', icon: '🫁', color: '#8b5cf6', badge: 'badge-warn' },
-            rr_tachypnea: { label: '呼吸急促', icon: '🫁', color: '#f97316', badge: 'badge-danger' },
-            rr_baseline_deviation: { label: 'RR基线偏离', icon: '📊', color: '#8b5cf6', badge: 'badge-warn' },
-            temp_abnormal: { label: '体温异常', icon: '🌡️', color: '#f97316', badge: 'badge-warn' },
-            fall_detected: { label: '跌倒', icon: '⚠️', color: '#991b1b', badge: 'badge-danger' },
-            fall_no_physiological_change: { label: '跌倒(无生理变化)', icon: '⚠️', color: '#991b1b', badge: 'badge-warn' },
-            low_confidence: { label: '低置信度', icon: '📡', color: '#94a3b8', badge: 'badge-neutral' },
-            nlos_occlusion: { label: 'NLOS遮挡', icon: '🚧', color: '#f59e0b', badge: 'badge-warn' },
-            modality_conflict: { label: '模态冲突', icon: '🔗', color: '#d946ef', badge: 'badge-danger' },
+            hr_abnormal: { label: T('心率异常', 'Heart-rate deviation'), icon: 'heart-pulse', color: C_ALERT, badge: 'badge-danger' },
+            rr_bradypnea: { label: T('呼吸过缓', 'Bradypnea'), icon: 'wind', color: C_ALERT, badge: 'badge-danger' },
+            rr_tachypnea: { label: T('呼吸急促', 'Tachypnea'), icon: 'wind', color: C_ALERT, badge: 'badge-danger' },
+            rr_baseline_deviation: { label: T('呼吸基线偏离', 'Respiratory baseline deviation'), icon: 'trending-up', color: C_VIOLET, badge: 'badge-warn' },
+            temp_abnormal: { label: T('体温异常', 'Surface-temperature deviation'), icon: 'thermometer', color: C_ALERT, badge: 'badge-danger' },
+            fall_detected: { label: T('跌倒', 'Fall detected'), icon: 'triangle-alert', color: C_ALERT, badge: 'badge-danger' },
+            fall_no_physiological_change: { label: T('跌倒（无生理变化）', 'Fall without physiological change'), icon: 'triangle-alert', color: C_VIOLET, badge: 'badge-warn' },
+            low_confidence: { label: T('低置信度', 'Low confidence'), icon: 'radio-tower', color: C_SENSE, badge: 'badge-info' },
+            nlos_occlusion: { label: T('NLOS 遮挡', 'NLOS degradation'), icon: 'wall', color: C_SENSE, badge: 'badge-info' },
+            modality_conflict: { label: T('模态冲突', 'Modality conflict'), icon: 'link', color: C_SENSE, badge: 'badge-info' },
         };
         function eventInfo(type) {
-            return EVENT_TYPES[type] || { label: type || '未知', icon: '❓', color: '#94a3b8', badge: 'badge-neutral' };
+            return EVENT_TYPES[type] || { label: type || T('未知', 'Unknown'), icon: 'help-circle', color: '#8a93a3', badge: 'badge-neutral' };
         }
         function eventHTML(type, detail) {
             const e = eventInfo(type);
@@ -377,11 +206,11 @@
 
         // Z-score helpers (available to all templates)
         function zColor(z) {
-            if (z === null || z === undefined) return '#94a3b8';
+            if (z === null || z === undefined) return '#8a93a3';
             const a = Math.abs(z);
-            if (a < 1.0) return '#16a34a';
-            if (a < 2.0) return '#d97706';
-            return '#dc2626';
+            if (a < 1.0) return '#14685c';
+            if (a < 2.0) return '#e8681f';
+            return '#a81c10';
         }
         function zBadge(z) {
             if (z === null || z === undefined) return '';

@@ -1,252 +1,298 @@
 {% extends "base.html" %}
-{% block title %}实时概览{% endblock %}
+{% block title %}{{ L('实时概览', 'Overview') }}{% endblock %}
 {% block head_extra %}
 <style>
-    .vitals-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 24px; }
-    .vital-card { background: var(--surface); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); border: 1px solid var(--border); display: flex; flex-direction: column; }
-    .vital-card .label { font-size: 12px; color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
-    .vital-card .value { font-size: 26px; font-weight: 700; line-height: 1.2; }
-    .vital-card .value-sm { font-size: 18px; font-weight: 700; line-height: 1.2; }
-    .vital-card .sub { font-size: 13px; color: var(--text-secondary); margin-top: 2px; }
-    .vital-card .sub .badge { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-left: 4px; }
-    .vital-card .icon { font-size: 18px; margin-bottom: 4px; }
-    .value-green { color: #16a34a; } .value-amber { color: #d97706; } .value-red { color: #dc2626; } .value-default { color: var(--text); }
-    .conf-bar-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
-    .conf-bar-row:first-of-type { margin-top: 6px; }
-    .conf-bar-label { font-size: 11px; color: var(--text-secondary); min-width: 48px; flex-shrink: 0; font-weight: 500; }
-    .conf-bar-track { flex: 1; height: 6px; background: #f1f5f9; border-radius: 3px; overflow: hidden; }
-    .conf-bar-fill { height: 100%; border-radius: 3px; transition: width .4s ease; }
-    .conf-bar-fill.wifi { background: #3b82f6; }
-    .conf-bar-fill.mmwave { background: #8b5cf6; }
-    .conf-bar-fill.thermal { background: #f97316; }
-    .conf-bar-pct { font-size: 11px; color: var(--text-secondary); min-width: 36px; text-align: right; font-weight: 600; }
-    .fusion-dominant { font-size: 14px; font-weight: 600; margin-top: 4px; }
-    .tag-modality { display: inline-block; padding: 1px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
-    .tag-wifi { background: #dbeafe; color: #1d4ed8; }
-    .tag-mmwave { background: #ede9fe; color: #5b21b6; }
-    .tag-fusion { background: #d1fae5; color: #065f46; }
-    .tag-best-effort { background: #fef3c7; color: #92400e; }
-    .fusion-rationale { font-size: 12px; color: var(--text-muted); margin-top: 4px; line-height: 1.4; }
-    .fusion-empty { font-size: 13px; color: var(--text-muted); margin-top: 6px; }
-    .care-summary { display:grid; grid-template-columns:minmax(240px, .75fr) 1.8fr; margin-bottom:16px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); }
-    .care-conclusion { padding:18px 20px; border-right:1px solid var(--border); }
-    .care-eyebrow { color:var(--text-muted); font-size:11px; font-weight:700; margin-bottom:5px; }
-    .care-title { font-size:20px; font-weight:700; line-height:1.3; }
-    .care-detail { color:var(--text-secondary); font-size:12px; margin-top:5px; line-height:1.5; }
-    .care-flow { display:grid; grid-template-columns:repeat(4,1fr); align-items:center; padding:12px 16px; }
-    .flow-step { position:relative; padding:8px 14px; min-width:0; }
-    .flow-step:not(:last-child)::after { content:'›'; position:absolute; right:-3px; top:17px; color:var(--text-muted); font-size:18px; }
-    .flow-step span { display:block; color:var(--text-muted); font-size:10px; font-weight:700; }
-    .flow-step strong { display:block; margin-top:3px; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
-    .dot.hr { background: #ef4444; } .dot.temp { background: #f97316; } .dot.fall { background: #991b1b; } .dot.rr { background: #8b5cf6; } .dot.conflict { background: #d946ef; } .dot.other { background: var(--text-muted); }
-    @media (max-width:1024px) { .vitals-grid { grid-template-columns: repeat(3,1fr); } .main-grid { grid-template-columns: 1fr; } }
-    @media (max-width:768px) { .vitals-grid { grid-template-columns: repeat(2,1fr); } .care-summary { grid-template-columns:1fr; } .care-conclusion { border-right:0; border-bottom:1px solid var(--border); } .care-flow { grid-template-columns:repeat(2,1fr); } .flow-step:nth-child(2)::after { display:none; } }
-    @media (max-width:480px) { 
-        .vitals-grid { grid-template-columns: 1fr; } 
-        .onboarding { padding:24px 20px; margin-top:18px; }
-        .onboarding h2 { font-size:20px; }
-        #trend-section .card-header { flex-direction: column; align-items: flex-start; gap: 8px; }
-        #trend-section .filter-bar { width: 100%; }
-        #trend-section select { flex: 1; }
+    /* Page-local geometry only — colour, type scale and components come from ssd.css. */
+    .care-summary { display: grid; grid-template-columns: minmax(260px, .8fr) 1.9fr; margin-bottom: 16px; }
+    .care-conclusion { padding: 16px 18px; border-right: 1px solid var(--line-soft); }
+    .care-eyebrow { font-size: var(--fs-12); font-weight: 650; color: var(--muted); margin-bottom: 4px; }
+    .care-title { font-size: var(--fs-19); font-weight: 650; line-height: 1.3; }
+    .care-detail { font-size: var(--fs-12); color: var(--muted); margin-top: 4px; line-height: 1.5; }
+    .care-flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: center; padding: 12px 16px; }
+    .flow-step { position: relative; padding: 6px 14px; min-width: 0; }
+    .flow-step:not(:last-child)::after { content: '›'; position: absolute; right: -2px; top: 15px; color: var(--subtle); font-size: var(--fs-16); }
+    .flow-step-label { display: block; color: var(--muted); font-size: var(--fs-12); font-weight: 600; }
+    .flow-step-num { font-family: var(--font-num); font-weight: 650; }
+    .flow-step strong { display: block; margin-top: 2px; font-size: var(--fs-13); color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .trend-head { flex-wrap: wrap; }
+    .trend-controls { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .trend-toggle { display: flex; align-items: center; gap: 5px; font-size: var(--fs-12); color: var(--muted); }
+
+    .vitals-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .vital-card { display: flex; flex-direction: column; }
+    .vital-card .label { margin-bottom: 4px; }
+    .vital-card .icon { color: var(--subtle); line-height: 0; margin-bottom: 7px; }
+    .vital-card .icon svg { width: 16px; height: 16px; }
+    .vital-card .value { font-size: var(--fs-24); font-weight: 700; line-height: 1.15; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+    .vital-card .value-sm { font-size: var(--fs-19); font-weight: 650; line-height: 1.2; }
+    .vital-card .sub { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 3px; font-size: var(--fs-12); color: var(--muted); }
+    .value-default { color: var(--ink); }
+    .value-green { color: var(--quality-ink); }
+    .value-amber { color: var(--agent-ink); }
+    .value-red { color: var(--alert-ink); }
+    .pm-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 6px; font-size: var(--fs-12); color: var(--subtle); }
+    .pm-meta > span { white-space: nowrap; }
+    .pm-meta strong { color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+
+    .conf-bar-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+    .conf-bar-label { min-width: 54px; flex-shrink: 0; font-size: var(--fs-12); font-weight: 600; color: var(--muted); }
+    .conf-bar-track { flex: 1; height: 6px; background: var(--line-soft); border-radius: 100px; overflow: hidden; }
+    .conf-bar-fill { height: 100%; border-radius: 100px; transition: width .4s ease; }
+    .conf-bar-fill.wifi { background: var(--sense); }
+    .conf-bar-fill.mmwave { background: var(--violet); }
+    .conf-bar-fill.thermal { background: var(--agent); }
+    .conf-bar-pct { min-width: 38px; text-align: right; font-size: var(--fs-12); font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .conf-sep { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line-soft); }
+
+    .fusion-dominant { display: flex; align-items: baseline; gap: 8px; margin-top: 6px; }
+    .fusion-rationale { margin-top: 4px; font-size: var(--fs-12); color: var(--muted); line-height: 1.45; }
+    .fusion-empty { margin-top: 6px; font-size: var(--fs-13); color: var(--subtle); }
+
+    .main-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+    .stat-lv { font-weight: 650; }
+    .stat-group td { border-top: 1px solid var(--line); }
+    .ev-ts { white-space: nowrap; }
+    .dash-footer { margin-top: 24px; text-align: center; }
+
+    @media (max-width: 1024px) {
+        .vitals-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .main-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 768px) {
+        .vitals-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .care-summary { grid-template-columns: 1fr; }
+        .care-conclusion { border-right: 0; border-bottom: 1px solid var(--line-soft); }
+        .care-flow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .flow-step:nth-child(2)::after { display: none; }
+    }
+    @media (max-width: 480px) {
+        .vitals-grid { grid-template-columns: 1fr; }
+        .trend-controls { margin-left: 0; width: 100%; }
+        .trend-controls select { flex: 1; }
     }
 </style>
 {% endblock %}
 {% block content %}
-<section class="care-summary" id="care-summary" {% if not has_data %}style="display:none;"{% endif %} aria-live="polite">
+<section class="care-summary panel panel--sense" id="care-summary" {% if not has_data %}style="display:none;"{% endif %} aria-live="polite">
     <div class="care-conclusion">
-        <div class="care-eyebrow">CURRENT CARE STATE</div>
-        <div class="care-title" id="care-title">正在形成结论</div>
-        <div class="care-detail" id="care-detail">读取最新感知窗口与证据链。</div>
+        <div class="care-eyebrow">{{ L('当前看护状态', 'Current care state') }}</div>
+        <div class="care-title" id="care-title">{{ L('正在形成结论', 'Forming conclusion') }}</div>
+        <div class="care-detail" id="care-detail">{{ L('读取最新感知窗口与证据链。', 'Reading the latest sensing window and evidence trail.') }}</div>
     </div>
-    <div class="care-flow" aria-label="看护证据闭环">
-        <div class="flow-step"><span>01 SENSING</span><strong id="flow-sensing">等待数据</strong></div>
-        <div class="flow-step"><span>02 BASELINE</span><strong id="flow-baseline">等待计算</strong></div>
-        <div class="flow-step"><span>03 FUSION</span><strong id="flow-fusion">等待裁决</strong></div>
-        <div class="flow-step"><span>04 ACTION</span><strong id="flow-action">静默记录</strong></div>
+    <div class="care-flow" aria-label="{{ L('看护证据闭环', 'Care evidence loop') }}">
+        <div class="flow-step"><span class="flow-step-label"><span class="flow-step-num">01</span> {{ L('感知', 'Sensing') }}</span><strong id="flow-sensing">{{ L('等待数据', 'Awaiting data') }}</strong></div>
+        <div class="flow-step"><span class="flow-step-label"><span class="flow-step-num">02</span> {{ L('基线', 'Baseline') }}</span><strong id="flow-baseline">{{ L('等待计算', 'Awaiting baseline') }}</strong></div>
+        <div class="flow-step"><span class="flow-step-label"><span class="flow-step-num">03</span> {{ L('融合', 'Fusion') }}</span><strong id="flow-fusion">{{ L('等待裁决', 'Awaiting arbitration') }}</strong></div>
+        <div class="flow-step"><span class="flow-step-label"><span class="flow-step-num">04</span> {{ L('行动', 'Action') }}</span><strong id="flow-action">{{ L('静默记录', 'Record only') }}</strong></div>
     </div>
 </section>
 
-        <!-- Empty State (onboarding) when no data -->
-        {% if not has_data %}
-        <div class="onboarding" id="onboarding">
-            <h2>SuperSenseDoctor 正在启动</h2>
-            <p>多模态传感数据融合看护系统。首次启动时自动创建示例数据和诊断记录。</p>
+<!-- Empty State (onboarding) when no data -->
+{% if not has_data %}
+<div class="onboarding panel panel--sense mb-16" id="onboarding">
+    <div class="panel-body">
+        <h2>SuperSenseDoctor {{ L('正在启动', 'is starting up') }}</h2>
+        <p class="text-sm text-muted mt-8">{{ L('多模态传感数据融合看护系统。首次启动时自动创建示例数据和诊断记录。', 'Multi-modal sensing fusion care system. Sample data and diagnostic records are created automatically on first start.') }}</p>
+    </div>
+</div>
+{% endif %}
+
+<!-- Trend Chart Section (ECharts) -->
+<section class="panel panel--sense mb-16" id="trend-section" {% if not has_data %}style="display:none;"{% endif %}>
+    <div class="panel-head trend-head">
+        <i data-lucide="chart-line"></i>
+        <h2>{{ L('趋势', 'Trends') }}</h2>
+        <div class="trend-controls">
+            <select id="trend-metric" onchange="loadTrend()">
+                <option value="hr">{{ L('心率 HR', 'Heart rate') }}</option>
+                <option value="rr">{{ L('呼吸 RR', 'Respiration rate') }}</option>
+                <option value="temp">{{ L('体温', 'Surface temperature') }}</option>
+            </select>
+            <select id="trend-range" onchange="loadTrend()">
+                <option value="15m">{{ L('15 分钟', '15 min') }}</option>
+                <option value="1h">{{ L('1 小时', '1 hour') }}</option>
+                <option value="6h">{{ L('6 小时', '6 hours') }}</option>
+                <option value="24h">{{ L('24 小时', '24 hours') }}</option>
+                <option value="all">{{ L('全部数据', 'All data') }}</option>
+            </select>
+            <label class="trend-toggle">
+                <input type="checkbox" id="trend-show-pm" onchange="loadTrend()"> {{ L('显示每模态', 'Show per modality') }}
+            </label>
         </div>
-        {% endif %}
+    </div>
+    <div class="panel-body">
+        <div id="trend-chart" class="chart" style="height:260px;"></div>
+        <div id="trend-empty" class="text-muted text-sm" style="display:none;text-align:center;padding:40px 0;">{{ L('趋势数据不足', 'Not enough trend data') }}</div>
+    </div>
+</section>
 
-        <!-- Trend Chart Section (ECharts) -->
-        <div class="card mb-16" id="trend-section" {% if not has_data %}style="display:none;"{% endif %}>
-            <div class="card-header">
-                <h2>趋势</h2>
-                <div class="filter-bar">
-                    <select id="trend-metric" onchange="loadTrend()">
-                        <option value="hr">心率 HR</option>
-                        <option value="rr">呼吸 RR</option>
-                        <option value="temp">体温</option>
-                    </select>
-                    <select id="trend-range" onchange="loadTrend()">
-                        <option value="15m">15 分钟</option>
-                        <option value="1h">1 小时</option>
-                        <option value="6h">6 小时</option>
-                        <option value="24h">24 小时</option>
-                        <option value="all">全部数据</option>
-                    </select>
-                    <label style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:4px;">
-                        <input type="checkbox" id="trend-show-pm" onchange="loadTrend()"> 显示每模态
-                    </label>
-                </div>
-            </div>
-            <div class="card-body">
-                <div id="trend-chart" style="width:100%;height:260px;"></div>
-                <div id="trend-empty" class="text-muted text-sm" style="display:none;text-align:center;padding:40px 0;">趋势数据不足</div>
-            </div>
+<!-- Vital Signs Cards -->
+<div class="vitals-grid" id="vitals-grid" {% if not has_data %}style="display:none;"{% endif %}>
+    <!-- 1. HR Card (enhanced + per-modality) -->
+    <div class="subcard vital-card" id="card-hr">
+        <div class="icon"><i data-lucide="heart-pulse"></i></div>
+        <div class="label">{{ L('心率 HR', 'Heart rate') }}</div>
+        <div class="value value-default" id="v-hr">--</div>
+        <div class="sub" id="v-hr-sub">
+            <span id="v-hr-z-badge"></span>
+            <span id="v-hr-baseline"></span>
         </div>
+        <div class="pm-meta" id="v-hr-permodality" style="display:none;">
+            <span>WiFi: <strong id="v-hr-wifi">--</strong></span>
+            <span>mmWave: <strong id="v-hr-mm">--</strong></span>
+            <span>conf: <strong id="v-hr-conf">--</strong></span>
+        </div>
+    </div>
 
-        <!-- Vital Signs Cards -->
-        <div class="vitals-grid" id="vitals-grid" {% if not has_data %}style="display:none;"{% endif %}>
-            <!-- 1. HR Card (enhanced + per-modality) -->
-            <div class="vital-card" id="card-hr">
-                <div class="icon"><i data-lucide="heart-pulse"></i></div>
-                <div class="label">心率 HR</div>
-                <div class="value value-default" id="v-hr">--</div>
-                <div class="sub" id="v-hr-sub">
-                    <span id="v-hr-z-badge"></span>
-                    <span id="v-hr-baseline"></span>
-                </div>
-                <div id="v-hr-permodality" style="margin-top:4px;font-size:11px;color:#94a3b8;display:none;">
-                    <span>WiFi: <strong id="v-hr-wifi">--</strong></span>
-                    <span style="margin-left:8px;">mmWave: <strong id="v-hr-mm">--</strong></span>
-                    <span style="margin-left:8px;">conf: <strong id="v-hr-conf">--</strong></span>
-                </div>
+    <!-- 2. RR Card (per-modality) -->
+    <div class="subcard vital-card" id="card-rr">
+        <div class="icon"><i data-lucide="wind"></i></div>
+        <div class="label">{{ L('呼吸率 RR', 'Respiration rate') }}</div>
+        <div class="value" id="v-rr">--</div>
+        <div class="sub" id="v-rr-sub">{{ L('次/分', 'breaths/min') }}</div>
+        <div class="pm-meta" id="v-rr-permodality" style="display:none;">
+            <span>WiFi: <strong id="v-rr-wifi">--</strong></span>
+            <span>mmWave: <strong id="v-rr-mm">--</strong></span>
+            <span>conf: <strong id="v-rr-conf">--</strong></span>
+        </div>
+    </div>
+
+    <!-- 3. Temp Card (enhanced) -->
+    <div class="subcard vital-card" id="card-temp">
+        <div class="icon"><i data-lucide="thermometer"></i></div>
+        <div class="label">{{ L('体温 TEMP', 'Surface temperature') }}</div>
+        <div class="value value-default" id="v-temp">--</div>
+        <div class="sub" id="v-temp-sub">
+            <span id="v-temp-z-badge"></span>
+            <span id="v-temp-baseline"></span>
+        </div>
+    </div>
+
+    <!-- 4. Sensor Confidence Card (enhanced with per-metric bars) -->
+    <div class="subcard vital-card" id="card-sensor">
+        <div class="icon"><i data-lucide="radio-tower"></i></div>
+        <div class="label">{{ L('传感置信度', 'Sensing confidence') }}</div>
+        <div class="conf-bar-row">
+            <span class="conf-bar-label">WiFi</span>
+            <div class="conf-bar-track"><div class="conf-bar-fill wifi" id="bar-wifi" style="width:0%"></div></div>
+            <span class="conf-bar-pct" id="pct-wifi">--</span>
+        </div>
+        <div class="conf-bar-row">
+            <span class="conf-bar-label">mmWave</span>
+            <div class="conf-bar-track"><div class="conf-bar-fill mmwave" id="bar-mmwave" style="width:0%"></div></div>
+            <span class="conf-bar-pct" id="pct-mmwave">--</span>
+        </div>
+        <div class="conf-bar-row">
+            <span class="conf-bar-label">Thermal</span>
+            <div class="conf-bar-track"><div class="conf-bar-fill thermal" id="bar-thermal" style="width:0%"></div></div>
+            <span class="conf-bar-pct" id="pct-thermal">--</span>
+        </div>
+        <div id="metric-conf-bars" style="display:none;">
+            <div class="conf-bar-row conf-sep">
+                <span class="conf-bar-label">{{ L('RR信', 'RR conf') }}</span>
+                <div class="conf-bar-track"><div class="conf-bar-fill wifi" id="bar-rr-conf" style="width:0%"></div></div>
+                <span class="conf-bar-pct" id="pct-rr-conf">--</span>
             </div>
-
-            <!-- 2. RR Card (per-modality) -->
-            <div class="vital-card" id="card-rr">
-                <div class="icon"><i data-lucide="wind"></i></div>
-                <div class="label">呼吸率 RR</div>
-                <div class="value" id="v-rr">--</div>
-                <div class="sub" id="v-rr-sub">次/分</div>
-                <div id="v-rr-permodality" style="margin-top:4px;font-size:11px;color:#94a3b8;display:none;">
-                    <span>WiFi: <strong id="v-rr-wifi">--</strong></span>
-                    <span style="margin-left:8px;">mmWave: <strong id="v-rr-mm">--</strong></span>
-                    <span style="margin-left:8px;">conf: <strong id="v-rr-conf">--</strong></span>
-                </div>
-            </div>
-
-            <!-- 3. Temp Card (enhanced) -->
-            <div class="vital-card" id="card-temp">
-                <div class="icon"><i data-lucide="thermometer"></i></div>
-                <div class="label">体温 TEMP</div>
-                <div class="value value-default" id="v-temp">--</div>
-                <div class="sub" id="v-temp-sub">
-                    <span id="v-temp-z-badge"></span>
-                    <span id="v-temp-baseline"></span>
-                </div>
-            </div>
-
-            <!-- 4. Sensor Confidence Card (enhanced with per-metric bars) -->
-            <div class="vital-card" id="card-sensor">
-                <div class="icon"><i data-lucide="radio-tower"></i></div>
-                <div class="label">传感置信度</div>
-                <div class="conf-bar-row">
-                    <span class="conf-bar-label">WiFi</span>
-                    <div class="conf-bar-track"><div class="conf-bar-fill wifi" id="bar-wifi" style="width:0%"></div></div>
-                    <span class="conf-bar-pct" id="pct-wifi">--</span>
-                </div>
-                <div class="conf-bar-row">
-                    <span class="conf-bar-label">mmWave</span>
-                    <div class="conf-bar-track"><div class="conf-bar-fill mmwave" id="bar-mmwave" style="width:0%"></div></div>
-                    <span class="conf-bar-pct" id="pct-mmwave">--</span>
-                </div>
-                <div class="conf-bar-row">
-                    <span class="conf-bar-label">Thermal</span>
-                    <div class="conf-bar-track"><div class="conf-bar-fill thermal" id="bar-thermal" style="width:0%"></div></div>
-                    <span class="conf-bar-pct" id="pct-thermal">--</span>
-                </div>
-                <div id="metric-conf-bars" style="display:none;">
-                    <div class="conf-bar-row" style="margin-top:6px;padding-top:6px;border-top:1px solid #f1f5f9;">
-                        <span class="conf-bar-label">RR信</span>
-                        <div class="conf-bar-track"><div class="conf-bar-fill wifi" id="bar-rr-conf" style="width:0%"></div></div>
-                        <span class="conf-bar-pct" id="pct-rr-conf">--</span>
-                    </div>
-                    <div class="conf-bar-row">
-                        <span class="conf-bar-label">HR信</span>
-                        <div class="conf-bar-track"><div class="conf-bar-fill wifi" id="bar-hr-conf" style="width:0%"></div></div>
-                        <span class="conf-bar-pct" id="pct-hr-conf">--</span>
-                    </div>
-                </div>
-                <div class="sub" id="v-sensor-sub" style="margin-top:6px;">
-                    <span id="v-sensor-nlos"></span>
-                </div>
-            </div>
-
-            <!-- 5. Activity State Card -->
-            <div class="vital-card" id="card-activity">
-                <div class="icon"><i data-lucide="activity"></i></div>
-                <div class="label">活动状态</div>
-                <div class="value value-sm" id="v-activity">--</div>
-                <div class="sub" id="v-activity-sub"></div>
-            </div>
-
-            <!-- 6. Fusion Verdict Card (portable_v2 sources) -->
-            <div class="vital-card" id="card-fusion">
-                <div class="icon"><i data-lucide="git-merge"></i></div>
-                <div class="label">融合判决</div>
-                <div id="fusion-content">
-                    <div class="fusion-empty">无融合数据</div>
-                </div>
-                <div id="fusion-sources" style="margin-top:6px;font-size:11px;color:#94a3b8;display:none;">
-                    <span>RR源: <strong id="v-fusion-rr-source">--</strong></span>
-                    <span style="margin-left:8px;">HR源: <strong id="v-fusion-hr-source">--</strong></span>
-                    <span id="v-fusion-consistent-badge" style="margin-left:8px;"></span>
-                </div>
+            <div class="conf-bar-row">
+                <span class="conf-bar-label">{{ L('HR信', 'HR conf') }}</span>
+                <div class="conf-bar-track"><div class="conf-bar-fill wifi" id="bar-hr-conf" style="width:0%"></div></div>
+                <span class="conf-bar-pct" id="pct-hr-conf">--</span>
             </div>
         </div>
+        <div class="sub" id="v-sensor-sub">
+            <span id="v-sensor-nlos"></span>
+        </div>
+    </div>
 
-        <!-- Main Content Grid -->
-        <div class="main-grid" id="main-grid" {% if not has_data %}style="display:none;"{% endif %}>
-            <!-- Left: Events -->
-            <div class="section">
-                <h2>最近异常事件</h2>
-                <div id="events-container">
-                    <div class="empty-state">暂无异常事件</div>
-                </div>
-            </div>
+    <!-- 5. Activity State Card -->
+    <div class="subcard vital-card" id="card-activity">
+        <div class="icon"><i data-lucide="activity"></i></div>
+        <div class="label">{{ L('活动状态', 'Activity state') }}</div>
+        <div class="value value-sm" id="v-activity">--</div>
+        <div class="sub" id="v-activity-sub"></div>
+    </div>
 
-            <!-- Right: Stats -->
-            <div class="section">
-                <h2>本周统计</h2>
-                <div class="stat-block" id="stats-container">
+    <!-- 6. Fusion Verdict Card (portable_v2 sources) -->
+    <div class="subcard vital-card" id="card-fusion">
+        <div class="icon"><i data-lucide="git-merge"></i></div>
+        <div class="label">{{ L('融合判决', 'Fusion verdict') }}</div>
+        <div id="fusion-content">
+            <div class="fusion-empty">{{ L('无融合数据', 'No fusion data') }}</div>
+        </div>
+        <div class="pm-meta" id="fusion-sources" style="display:none;">
+            <span>{{ L('RR源:', 'RR source:') }} <strong id="v-fusion-rr-source">--</strong></span>
+            <span>{{ L('HR源:', 'HR source:') }} <strong id="v-fusion-hr-source">--</strong></span>
+            <span id="v-fusion-consistent-badge"></span>
+        </div>
+    </div>
+</div>
+
+<!-- Main Content Grid -->
+<div class="main-grid" id="main-grid" {% if not has_data %}style="display:none;"{% endif %}>
+    <!-- Left: Events -->
+    <section class="panel panel--alert">
+        <div class="panel-head">
+            <i data-lucide="triangle-alert"></i>
+            <h2>{{ L('最近异常事件', 'Recent abnormal events') }}</h2>
+        </div>
+        <div class="panel-body stack" id="events-container">
+            <div class="empty-state">{{ L('暂无异常事件', 'No abnormal events') }}</div>
+        </div>
+    </section>
+
+    <!-- Right: Stats -->
+    <section class="panel panel--quality">
+        <div class="panel-head">
+            <i data-lucide="bar-chart-3"></i>
+            <h2>{{ L('本周统计', 'This week') }}</h2>
+            <a href="/report" class="btn btn-secondary btn-sm ml-auto"><i data-lucide="file-chart-column"></i>{{ L('查看周报', 'View weekly report') }}</a>
+        </div>
+        {% set tier_label = {
+            'L0': L('静默记录', 'Routine observation'),
+            'L1': L('持续观察', 'Continued observation'),
+            'L2': L('居民提醒', 'Resident prompt'),
+            'L3': L('家属告警', 'Family notification'),
+            'L4': L('紧急路由', 'Emergency routing')} %}
+        <div class="table-wrap" id="stats-container">
+            <table class="data">
+                <tbody>
                     {% for lv in ['L0', 'L1', 'L2', 'L3', 'L4'] %}
-                    <div class="stat-row">
-                        <span class="label">{{ lv }}</span>
-                        <span class="val" id="count-{{ lv }}">0</span>
-                    </div>
+                    <tr>
+                        <td><span class="stat-lv">{{ lv }}</span><span class="text-xs text-muted"> · {{ tier_label[lv] }}</span></td>
+                        <td class="num" id="count-{{ lv }}">0</td>
+                    </tr>
                     {% endfor %}
-                    <div class="stat-divider"></div>
-                    <div class="stat-row"><span class="label">NLOS 遮挡</span><span class="val" id="stat-nlos">0</span></div>
-                    <div class="stat-row"><span class="label">低置信度</span><span class="val" id="stat-lowconf">0</span></div>
-                    <div class="stat-row"><span class="label">模态冲突</span><span class="val" id="stat-conflict">0</span></div>
-                </div>
-                <div style="margin-top:14px;">
-                    <a href="/report" class="btn btn-secondary"><i data-lucide="file-chart-column"></i>查看周报</a>
-                </div>
-            </div>
+                    <tr class="stat-group">
+                        <td>{{ L('NLOS 遮挡', 'NLOS degradation') }}</td>
+                        <td class="num" id="stat-nlos">0</td>
+                    </tr>
+                    <tr>
+                        <td>{{ L('低置信度', 'Low confidence') }}</td>
+                        <td class="num" id="stat-lowconf">0</td>
+                    </tr>
+                    <tr>
+                        <td>{{ L('模态冲突', 'Modality conflict') }}</td>
+                        <td class="num" id="stat-conflict">0</td>
+                    </tr>
+                </tbody>
+            </table>
         </div>
+    </section>
+</div>
 
-        <div class="footer" style="margin-top:24px;color:#94a3b8;font-size:12px;text-align:center;">
-            本地边缘数据 · care support only · SuperSenseDoctor v0.1
-        </div>
+<div class="dash-footer text-xs text-subtle">
+    {{ L('本地边缘数据', 'Local edge data') }} · care support only · SuperSenseDoctor v0.1
+</div>
 
     <script>
-    // ── Z-score color helper ──
+    // ── Z-score color helper (CSS token names, so the palette stays in ssd.css) ──
     function zScoreColor(z) {
-        if (z === null || z === undefined) return '#94a3b8';
+        if (z === null || z === undefined) return 'var(--subtle)';
         const abs = Math.abs(z);
-        if (abs < 1.0) return '#16a34a';
-        if (abs < 2.0) return '#d97706';
-        return '#dc2626';
+        if (abs < 1.0) return 'var(--quality-ink)';
+        if (abs < 2.0) return 'var(--agent-ink)';
+        return 'var(--alert-ink)';
     }
 
     function zScoreBadgeClass(z) {
@@ -275,7 +321,7 @@
     // ── Baseline reference HTML ──
     function baselineHTML(mean) {
         if (mean === null || mean === undefined) return '';
-        return `<span style="font-size:12px;color:#94a3b8;margin-left:6px;">(基线: ${mean})</span>`;
+        return `<span class="text-xs text-subtle">(${T('基线', 'Baseline')}: ${mean})</span>`;
     }
 
     // ── Confidence percentage text ──
@@ -294,20 +340,21 @@
         const container = document.getElementById('fusion-content');
         if (!fusion || !fusion.verdict || !fusion.verdict.dominant_modality || fusion.verdict.dominant_modality === 'none') {
             const qualityEvent = fusion && fusion.checks && fusion.checks.quality_event;
-            container.innerHTML = `<div class="fusion-empty">${qualityEvent ? '测量质量不足，需复核' : '尚未形成融合结论'}</div>`;
+            container.innerHTML = `<div class="fusion-empty">${qualityEvent ? T('测量质量不足，需复核', 'Insufficient measurement quality — needs review') : T('尚未形成融合结论', 'No fusion verdict yet')}</div>`;
             return;
         }
         const v = fusion.verdict;
         const dom = v.dominant_modality;
-        const tagClass = dom === 'wifi' ? 'tag-wifi' : dom === 'mmwave' ? 'tag-mmwave' : dom === 'fusion' ? 'tag-fusion' : 'tag-best-effort';
-        const domLabel = dom === 'wifi' ? 'WiFi' : dom === 'mmwave' ? 'mmWave' : dom === 'fusion' ? '融合' : '最优选取';
+        // Shared chips from ssd.css carry the modality accent meaning.
+        const tagClass = dom === 'wifi' ? 'chip--sense' : dom === 'mmwave' ? 'chip--violet' : dom === 'fusion' ? 'chip--quality' : 'chip--agent';
+        const domLabel = dom === 'wifi' ? 'WiFi' : dom === 'mmwave' ? 'mmWave' : dom === 'fusion' ? T('融合', 'Fusion') : T('最优选取', 'Best effort');
         const fv = v.fused_value;
         const fvDisplay = fv !== null && fv !== undefined ? fv.toFixed(1) : '--';
         const rationale = v.rationale || '';
         container.innerHTML = `
             <div class="fusion-dominant">
-                <span class="tag-modality ${tagClass}">${domLabel}</span>
-                <span style="font-size:20px;font-weight:700;margin-left:8px;">${fvDisplay}</span>
+                <span class="chip ${tagClass}">${domLabel}</span>
+                <span class="value-md num">${fvDisplay}</span>
             </div>
             <div class="fusion-rationale" title="${rationale.replace(/"/g,'&quot;')}">${rationale}</div>
         `;
@@ -336,20 +383,20 @@
             const careTitle = document.getElementById('care-title');
             const careDetail = document.getElementById('care-detail');
             if (action.level && ['L3', 'L4'].includes(action.level)) {
-                careTitle.textContent = `${action.level} · 需要及时处置`;
-                careTitle.style.color = 'var(--danger)';
+                careTitle.textContent = `${action.level} · ${T('需要及时处置', 'Prompt action required')}`;
+                careTitle.style.color = 'var(--alert-ink)';
             } else if (qualityIssue) {
-                careTitle.textContent = '测量质量需复核';
-                careTitle.style.color = 'var(--warn)';
+                careTitle.textContent = T('测量质量需复核', 'Measurement quality needs review');
+                careTitle.style.color = 'var(--agent-ink)';
             } else {
-                careTitle.textContent = '当前未见高风险行动';
-                careTitle.style.color = 'var(--text)';
+                careTitle.textContent = T('当前未见高风险行动', 'No high-risk action indicated');
+                careTitle.style.color = 'var(--ink)';
             }
-            careDetail.textContent = `${historical ? '历史回放' : '实时窗口'} · ${data.source || 'unknown'} · ${String(data.timestamp || '').replace('T',' ').slice(0,19)}`;
-            document.getElementById('flow-sensing').textContent = data.has_per_modality ? 'WiFi + mmWave' : (data.source || '已接入');
-            document.getElementById('flow-baseline').textContent = Object.keys(bl).length ? '个人基线可用' : '基线数据不足';
-            document.getElementById('flow-fusion').textContent = qualityIssue ? '质量事件' : (fv.dominant_modality || '待裁决');
-            document.getElementById('flow-action').textContent = action.level ? `${action.level} · ${action.channel || 'none'}` : '仅入库展示';
+            careDetail.textContent = `${historical ? T('历史回放', 'Historical replay') : T('实时窗口', 'Live window')} · ${data.source || 'unknown'} · ${String(data.timestamp || '').replace('T',' ').slice(0,19)}`;
+            document.getElementById('flow-sensing').textContent = data.has_per_modality ? 'WiFi + mmWave' : (data.source || T('已接入', 'Connected'));
+            document.getElementById('flow-baseline').textContent = Object.keys(bl).length ? T('个人基线可用', 'Personal baseline available') : T('基线数据不足', 'Baseline data insufficient');
+            document.getElementById('flow-fusion').textContent = qualityIssue ? T('质量事件', 'Quality event') : (fv.dominant_modality || T('待裁决', 'Pending arbitration'));
+            document.getElementById('flow-action').textContent = action.level ? `${action.level} · ${action.channel || 'none'}` : T('仅入库展示', 'Record only');
 
             // HR
             const hrEl = document.getElementById('v-hr');
@@ -400,12 +447,21 @@
             document.getElementById('bar-thermal').style.width = pctWidth(q.thermal_confidence);
             document.getElementById('pct-thermal').textContent = pctText(q.thermal_confidence);
 
-            // NLOS indicator
-            document.getElementById('v-sensor-nlos').textContent = q.nlos_flag ? '⚠ NLOS 遮挡' : '';
+            // NLOS indicator — measurement-domain chip, never an emoji
+            document.getElementById('v-sensor-nlos').innerHTML = q.nlos_flag
+                ? `<span class="badge badge-info">${T('NLOS 遮挡', 'NLOS degradation')}</span>`
+                : '';
 
             // Activity
             document.getElementById('v-activity').textContent = data.activity_state || '--';
-            document.getElementById('v-activity-sub').textContent = q.nlos_flag ? 'NLOS 遮挡' : (data.fall_status === 'fall' ? '跌倒' : '正常');
+            const activitySub = document.getElementById('v-activity-sub');
+            if (q.nlos_flag) {
+                activitySub.innerHTML = `<span class="badge badge-info">${T('NLOS 遮挡', 'NLOS degradation')}</span>`;
+            } else if (data.fall_status === 'fall') {
+                activitySub.innerHTML = `<span class="badge badge-danger">${T('跌倒', 'Fall detected')}</span>`;
+            } else {
+                activitySub.textContent = T('正常', 'Normal');
+            }
 
             // Fusion verdict
             renderFusion(fusion);
@@ -419,9 +475,9 @@
                 const chk = fusion.checks || {};
                 const badgeEl = document.getElementById('v-fusion-consistent-badge');
                 if (chk.consistent === true) {
-                    badgeEl.innerHTML = '<span class="badge badge-ok">→一致</span>';
+                    badgeEl.innerHTML = '<span class="badge badge-ok">→' + T('一致', 'Consistent') + '</span>';
                 } else if (chk.consistent === false) {
-                    badgeEl.innerHTML = `<span class="badge badge-danger">→冲突 δ=${(chk.delta||0).toFixed(1)}</span>`;
+                    badgeEl.innerHTML = `<span class="badge badge-danger">→${T('冲突', 'Conflict')} δ=${(chk.delta||0).toFixed(1)}</span>`;
                 } else {
                     badgeEl.innerHTML = '';
                 }
@@ -466,23 +522,66 @@
             const el = document.getElementById(id);
             if (el) {
                 el.textContent = message;
-                el.style.color = tone === 'error' ? 'var(--danger)' : tone === 'ok' ? 'var(--accent)' : 'var(--text-secondary)';
+                el.style.color = tone === 'error' ? 'var(--alert-ink)' : tone === 'ok' ? 'var(--quality-ink)' : 'var(--muted)';
             }
         });
     }
 
     // ── Initial render ──
-    // Render server-provided events
-    (function() {
+    // Render server-provided events. This inline script runs while the parser is
+    // still inside <body>, i.e. before base.html's helpers (T, eventInfo) load,
+    // so the first render waits for DOMContentLoaded.
+    function renderInitialEvents() {
         try {
             const episodes = {{ recent_episodes_json|safe }};
             renderEvents(episodes);
+            renderWeeklyStats(episodes);
         } catch(e) { /* ignore */ }
-    })();
+    }
+
+    // ── Weekly counts ──
+    // The tier rows and the quality-event rows were rendered as literal zeros
+    // with nothing populating them, so the panel read 0 everywhere even while
+    // the events list beside it showed L0-L4 records. Derive the counts from
+    // the same episode payload the events list uses.
+    const QUALITY_EVENT_IDS = {
+        nlos_occlusion: 'stat-nlos',
+        low_confidence: 'stat-lowconf',
+        modality_conflict: 'stat-conflict'
+    };
+
+    function renderWeeklyStats(episodes) {
+        const rows = episodes || [];
+        const tierCounts = { L0: 0, L1: 0, L2: 0, L3: 0, L4: 0 };
+        const qualityCounts = { 'stat-nlos': 0, 'stat-lowconf': 0, 'stat-conflict': 0 };
+
+        rows.forEach(ep => {
+            const level = (ep.decision && ep.decision.level) || 'L0';
+            if (level in tierCounts) tierCounts[level] += 1;
+
+            const type = ep.health_event_type || '';
+            const target = QUALITY_EVENT_IDS[type];
+            if (target) qualityCounts[target] += 1;
+        });
+
+        Object.keys(tierCounts).forEach(level => {
+            const el = document.getElementById('count-' + level);
+            if (el) el.textContent = tierCounts[level];
+        });
+        Object.keys(qualityCounts).forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = qualityCounts[id];
+        });
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', renderInitialEvents);
+    } else {
+        renderInitialEvents();
+    }
 
     function getEventDot(type) {
         const e = eventInfo(type);
-        return `<span class="status-dot" style="background:${e.color};display:inline-block;margin-right:6px;"></span>`;
+        return `<span class="status-dot" style="background:${e.color}"></span>`;
     }
 
     function getEventLevel(ep) {
@@ -493,7 +592,7 @@
     function renderEvents(episodes) {
         const container = document.getElementById('events-container');
         if (!episodes || episodes.length === 0) {
-            container.innerHTML = '<div class="empty-state" style="padding:32px 14px;color:var(--text-muted);text-align:center;">暂无异常事件</div>';
+            container.innerHTML = '<div class="empty-state">' + T('暂无异常事件', 'No abnormal events') + '</div>';
             return;
         }
         let html = '';
@@ -506,17 +605,17 @@
             const badgeCls = level === 'L0' ? 'badge-ok' : level === 'L1' ? 'badge-warn' : level === 'L2' ? 'badge-warn' : 'badge-danger';
             const ev = eventInfo(eventType);
             html += `
-                <div class="event-card" style="padding:12px 14px;border-radius:var(--radius);border:1px solid var(--border);margin-bottom:8px;">
-                    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
-                        <div style="display:flex;align-items:center;gap:6px;">
-                            <span class="status-dot" style="background:${ev.color};display:inline-block;width:8px;height:8px;border-radius:50%;flex-shrink:0;"></span>
-                            <span style="font-size:13px;font-weight:600;">${ev.label}</span>
-                            <span class="badge ${badgeCls}" style="font-size:11px;">${level}</span>
+                <div class="subcard event-card">
+                    <div class="flex" style="justify-content:space-between;align-items:flex-start;gap:8px;">
+                        <div class="flex gap-8" style="min-width:0;">
+                            <span class="status-dot" style="background:${ev.color}"></span>
+                            <span class="text-sm fw-600">${ev.label}</span>
+                            <span class="badge ${badgeCls}">${level}</span>
                         </div>
-                        <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">${ts}</span>
+                        <span class="text-xs text-muted ev-ts">${ts}</span>
                     </div>
-                    <div style="margin-top:4px;font-size:12px;color:var(--text-secondary);line-height:1.5;">${interp || '—'}</div>
-                    <div style="margin-top:4px;"><a href="/episode/${ep.episode_id || ''}" style="font-size:12px;color:var(--info);text-decoration:none;font-weight:500;">查看详情 →</a></div>
+                    <div class="text-xs text-muted mt-8">${interp || '—'}</div>
+                    <div class="mt-8"><a href="/episode/${ep.episode_id || ''}" class="text-xs fw-600">${T('查看详情', 'View details')} →</a></div>
                 </div>
             `;
         });
@@ -532,10 +631,18 @@
 
     // ── Trend Chart (ECharts) ──
     let trendChart = null;
+    let trendInitTries = 0;
 
     function initTrendChart() {
         const el = document.getElementById('trend-chart');
-        if (!el || !echarts) return;
+        if (!el) return;
+        // base.html loads echarts after this inline script, so the library may
+        // not exist yet: wait for it instead of throwing a ReferenceError.
+        if (typeof echarts === 'undefined') {
+            if (trendInitTries++ < 20) setTimeout(initTrendChart, 250);
+            return;
+        }
+        trendInitTries = 0;
         if (trendChart) trendChart.dispose();
         trendChart = echarts.init(el);
         loadTrend();
@@ -567,27 +674,32 @@
             const wifi = pts.map(p => p[`${metric}_wifi`]);
             const mm = pts.map(p => p[`${metric}_mm`]);
 
-            const metricLabels = {hr: '心率 (次/分)', rr: '呼吸率 (次/分)', temp: '体温 (°C)'};
-            const metricColors = {hr: '#dc2626', rr: '#8b5cf6', temp: '#f97316'};
+            const metricLabels = {hr: T('心率 (次/分)', 'Heart rate (bpm)'), rr: T('呼吸率 (次/分)', 'Respiration rate (breaths/min)'), temp: T('体温 (°C)', 'Surface temperature (°C)')};
+            // ECharts draws on canvas, which cannot resolve CSS custom properties,
+            // so these literals mirror the ssd.css tokens: alert / quality / agent.
+            const C_ALERT = '#a81c10', C_QUALITY = '#14685c', C_AGENT = '#e8681f';
+            const C_SENSE = '#2b46ad', C_LINE_SOFT = '#eceff4', C_MUTED = '#5b6577', C_INK = '#1a1f2b';
+            const metricColors = {hr: C_ALERT, rr: C_QUALITY, temp: C_AGENT};
 
             const series = [{
-                name: '融合值',
+                name: T('融合值', 'Fused value'),
                 type: 'line',
                 data: fused,
                 smooth: true,
                 symbol: 'none',
-                lineStyle: {width: 2.5, color: metricColors[metric] || '#1e293b'},
+                lineStyle: {width: 2.5, color: metricColors[metric] || C_INK},
                 z: 2,
             }];
 
             if (showPM) {
+                // Per-modality references share the sensing accent; opacity keeps them apart.
                 series.push({
                     name: 'WiFi',
                     type: 'line',
                     data: wifi,
                     smooth: true,
                     symbol: 'none',
-                    lineStyle: {width: 1.2, color: '#3b82f6', type: 'dashed'},
+                    lineStyle: {width: 1.2, color: C_SENSE, opacity: 0.9, type: 'dashed'},
                     z: 1,
                 });
                 series.push({
@@ -596,7 +708,7 @@
                     data: mm,
                     smooth: true,
                     symbol: 'none',
-                    lineStyle: {width: 1.2, color: '#8b5cf6', type: 'dashed'},
+                    lineStyle: {width: 1.2, color: C_SENSE, opacity: 0.55, type: 'dashed'},
                     z: 1,
                 });
             }
@@ -604,27 +716,27 @@
             // Mark NLOS / quality_event points
             const markData = [];
             pts.forEach((p, i) => {
-                if (p.nlos_flag) markData.push({xAxis: i, label: {show: false}, symbol: 'diamond', symbolSize: 8, itemStyle: {color: '#f59e0b'}});
-                if (p.quality_event) markData.push({xAxis: i, label: {show: false}, symbol: 'circle', symbolSize: 8, itemStyle: {color: '#ef4444'}});
+                if (p.nlos_flag) markData.push({xAxis: i, label: {show: false}, symbol: 'diamond', symbolSize: 8, itemStyle: {color: C_SENSE}});
+                if (p.quality_event) markData.push({xAxis: i, label: {show: false}, symbol: 'circle', symbolSize: 8, itemStyle: {color: C_AGENT}});
             });
 
             if (trendChart) {
                 trendChart.setOption({
                     tooltip: {trigger: 'axis', valueFormatter: v => v?.toFixed(1)},
                     legend: {show: showPM, bottom: 0, icon: 'line', itemWidth: 14, itemHeight: 2},
-                    grid: {left: 40, right: 16, top: 8, bottom: showPM ? 36 : 16},
+                    grid: {left: 40, right: 16, top: 26, bottom: showPM ? 36 : 16},
                     xAxis: {
                         type: 'category', data: times,
-                        axisLabel: {fontSize: 11, color: '#94a3b8'},
+                        axisLabel: {fontSize: 12, color: C_MUTED},
                         axisLine: {show: false},
                         axisTick: {show: false},
                     },
                     yAxis: {
                         type: 'value',
                         name: metricLabels[metric] || '',
-                        nameTextStyle: {fontSize: 11, color: '#94a3b8'},
-                        axisLabel: {fontSize: 11, color: '#94a3b8'},
-                        splitLine: {lineStyle: {color: '#f1f5f9'}},
+                        nameTextStyle: {fontSize: 12, color: C_MUTED, align: 'left'},
+                        axisLabel: {fontSize: 12, color: C_MUTED},
+                        splitLine: {lineStyle: {color: C_LINE_SOFT}},
                     },
                     series: series,
                 }, true);

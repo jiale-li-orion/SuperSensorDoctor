@@ -1,139 +1,788 @@
 {% extends "base.html" %}
-{% block title %}周报洞察{% endblock %}
+{% block title %}{{ L('每周看护报告', 'Weekly care report') }}{% endblock %}
+
 {% block head_extra %}
+{% set view = request.query_params.get('view', 'report') %}
+{% if not report_text %}{% set view = 'blocks' %}{% endif %}
+{% set figure = request.query_params.get('figure') %}
+{% set qs = ('&figure=1' if figure else '') %}
+{# Headline status label: the backend emits tier codes (L3/L4) and one
+   all-caps status word. Sentence case it without touching the data. #}
+{% set status_label = (report_status.label | capitalize) if report_status.label in ['STABLE', 'QUALITY REVIEW', 'INSUFFICIENT EVIDENCE'] else report_status.label %}
 <style>
-    .report-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-    .stat-card { text-align: center; padding: 22px 18px; }
-    .stat-card .num { font-size: 32px; font-weight: 700; }
-    .stat-card .lbl { font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
-    .level-bar { height: 12px; background: #f1f5f9; border-radius: 6px; overflow: hidden; display: flex; }
-    .level-seg { height: 100%; transition: width .3s; }
-    .event-type-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #f1f5f9; font-size: 13px; }
-    .event-type-row:last-child { border-bottom: none; }
-    .print-only { display: none; }
-    @media print {
-        .topnav, .no-print { display: none !important; }
-        .print-only { display: block; }
-        .card { break-inside: avoid; box-shadow: none; border: 1px solid #ddd; }
-    }
-    .report-content { font-size: 14px; line-height: 1.8; padding: 24px; }
-    .report-content h1, .report-content h2, .report-content h3 { margin: 20px 0 10px; font-weight: 600; color: var(--text); }
-    .report-content h1:first-child, .report-content h2:first-child { margin-top: 0; }
-    .report-content h2 { font-size: 17px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
-    .report-content h3 { font-size: 15px; }
-    .report-content ul { padding-left: 20px; margin: 8px 0; }
-    .report-content li { margin: 4px 0; }
-    .report-content p { margin: 8px 0; }
-    .report-content strong { font-weight: 600; }
+  /* Weekly-report layout only. Colour, type scale, panels, badges, tables,
+     chips and callouts all come from ssd.css — nothing is re-declared here. */
+
+  .report-sheet { padding-bottom: 4px; }
+
+  .report-head {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px 16px; align-items: center;
+  }
+  .report-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+
+  /* 2 — status banner with the headline figures */
+  .banner { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 20px; align-items: center; }
+  .banner-msg { display: flex; gap: 10px; align-items: flex-start; }
+  .banner-msg svg { width: 18px; height: 18px; flex: none; margin-top: 2px; color: var(--quality); }
+  .banner-figures { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(74px, auto); }
+  .banner-figure { padding: 0 16px; border-left: 1px solid var(--quality-line); }
+  .banner-figure:first-child { border-left: 0; padding-left: 0; }
+  .banner-figure:last-child { padding-right: 0; }
+
+  /* 3 — vital-sign metric row */
+  .vital-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .vital-cell { display: flex; gap: 10px; align-items: center; }
+  .vital-cell > svg { width: 22px; height: 22px; flex: none; }
+  .vital-cell--hr > svg   { color: var(--sense); }
+  .vital-cell--rr > svg   { color: var(--quality); }
+  .vital-cell--temp > svg { color: var(--agent); }
+
+  /* 4 — the three hero cards */
+  .hero-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .hero-card { display: flex; flex-direction: column; gap: 10px; }
+  .hero-card > .label { flex: none; }
+  .hero-flex { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+  .hero-big { margin-top: 2px; }
+
+  /* Baseline: metric · population deviation (z-score) */
+  table.z-table { width: 100%; border-collapse: collapse; }
+  table.z-table th {
+    padding: 0 0 5px; text-align: left; font-size: var(--fs-12);
+    font-weight: 650; color: var(--muted); border-bottom: 1px solid var(--line);
+  }
+  table.z-table td { padding: 7px 0; border-bottom: 1px solid var(--line-soft); vertical-align: middle; }
+  table.z-table tr:last-child td { border-bottom: 0; }
+  table.z-table td:last-child { text-align: right; }
+
+  /* L0–L4 tier boxes */
+  .tier-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; }
+  .tier-box { padding: 6px 4px; text-align: center; }
+  .tier-box .label { margin-top: 2px; }
+  .tier-box--top { background: var(--agent-soft); border-color: var(--agent); }
+  .tier-box--top .value-sm { color: var(--agent-ink); }
+
+  /* Compact definition rows for the supporting panels */
+  .fact-list { display: grid; gap: 7px; }
+  .fact-row { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; }
+  .fact-row > .text-muted { min-width: 0; }
+  .fact-row > b { white-space: nowrap; }
+
+  /* Section headings inside a panel body */
+  .body-title {
+    margin: 0 0 8px; font-size: var(--fs-12); font-weight: 650;
+    letter-spacing: .01em; color: var(--ink-soft);
+  }
+
+  /* The one consolidated note on the page */
+  .boundary-note { margin-top: 14px; }
+
+  /* Agent markdown, when ?view=report is active */
+  .md { font-size: var(--fs-14); line-height: 1.62; color: var(--ink-soft); overflow-wrap: anywhere; }
+  .md h2 { margin: 20px 0 8px; padding-bottom: 5px; border-bottom: 1px solid var(--line-soft); font-size: var(--fs-19); }
+  .md h2:first-child { margin-top: 0; }
+  .md h3 { margin: 14px 0 6px; font-size: var(--fs-16); }
+  .md ul, .md ol { margin: 6px 0; padding-left: 20px; }
+  .md li { margin: 3px 0; }
+  .md code { background: var(--surface-sunk); padding: 1px 5px; border-radius: 3px; color: var(--ink-soft); }
+  .md p { margin: 8px 0; }
+  .md table { width: 100%; border-collapse: collapse; font-size: var(--fs-13); }
+
+  #weekly-chart { width: 100%; height: 264px; }
+
+  @media (max-width: 900px) {
+    .hero-row { grid-template-columns: 1fr; }
+    .banner { grid-template-columns: 1fr; }
+    .banner-figures { grid-auto-flow: row; grid-auto-columns: auto; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .banner-figure { border-left: 0; padding: 0 12px 0 0; }
+    .banner-figure:nth-child(3n+2) { border-left: 1px solid var(--quality-line); padding-left: 12px; }
+  }
+  @media (max-width: 720px) {
+    .report-head { grid-template-columns: 1fr; }
+    .vital-grid { grid-template-columns: 1fr; }
+    .panel-body { padding: 12px; }
+    .kpi { padding: 10px 12px; }
+  }
+  @media print {
+    .report-sheet { break-inside: auto; }
+    .subcard { break-inside: avoid; }
+  }
+  {% if figure %}
+  body { background: #fff; }
+  .topnav, .report-actions { display: none !important; }
+  {% endif %}
 </style>
 {% endblock %}
+
 {% block content %}
-<div class="mb-16 flex flex-wrap">
-    <h1>周报洞察</h1>
-    <span class="text-muted text-sm ml-auto" id="report-ref-date">{{ reference_date }}</span>
-</div>
+{# NOTE: Jinja block scope — anything {% set %} inside head_extra is NOT
+   visible here, so the view/status/querystring derivations are repeated.
+   Keep these two blocks in sync. #}
+{% set view = request.query_params.get('view', 'report') %}
+{% if not report_text %}{% set view = 'blocks' %}{% endif %}
+{% set figure = request.query_params.get('figure') %}
+{% set qs = ('&figure=1' if figure else '') %}
+{% set status_label = (report_status.label | capitalize) if report_status.label in ['STABLE', 'QUALITY REVIEW', 'INSUFFICIENT EVIDENCE'] else report_status.label %}
+<main class="panel panel--agent report-sheet">
 
-{% if total_episodes == 0 %}
-<div class="empty-state">
-    <h3>暂无诊断记录</h3>
-    <p>过去 7 天内没有触发任何看护事件。请先加载数据。</p>
-</div>
-{% else %}
+  <!-- ═══ Figure 2 grammar 1 — report container header ═══ -->
+  <div class="panel-head report-head">
+    <h1>{{ L('每周看护报告', 'Weekly care report') }}</h1>
+    <span class="text-sm text-muted ml-auto">
+      {{ period_start }} — {{ period_end }} · {{ L('参考时间', 'reference') }} {{ reference_date }}
+    </span>
+    <div class="report-actions no-print">
+      <a class="btn btn-sm {{ 'btn-primary' if view == 'report' else 'btn-secondary' }}"
+         href="/report?view=report{{ qs }}">{{ L('Agent 报告', 'Agent report') }}</a>
+      <a class="btn btn-sm {{ 'btn-primary' if view == 'blocks' else 'btn-secondary' }}"
+         href="/report?view=blocks{{ qs }}">{{ L('区块视图', 'Structured view') }}</a>
+      <a class="btn btn-secondary btn-sm" href="/report?view={{ view }}&figure=1"><i data-lucide="maximize-2"></i> {{ L('图示', 'Figure') }}</a>
+      <button class="btn btn-secondary btn-sm" onclick="window.print()"><i data-lucide="printer"></i> {{ L('导出', 'Export') }}</button>
+    </div>
+  </div>
 
-<!-- LLM生成的周报文本 -->
-{% if report_text %}
-<div class="card mb-16 report-content">
-    {{ report_text | markdown | safe }}
-</div>
-{% endif %}
+  {% if view == 'report' %}
 
-<div class="report-grid mb-16">
-    <div class="card stat-card">
-        <div class="num" style="color:#22c55e;">{{ total_episodes }}</div>
-        <div class="lbl">诊断总数（7 天）</div>
+  <!-- ═══ Agent markdown view (?view=report) ═══ -->
+  <div class="panel-body">
+    <div class="flex flex-wrap gap-8 mb-16">
+      <span class="badge badge-info">
+        {{ L('模型叙述', 'Model prose') if report_source == 'llm' else L('确定性证据渲染', 'Deterministic evidence render') }}
+      </span>
+      <span class="text-xs text-muted">
+        {{ summary_block.total_records }} {{ L('条分诊记录', 'triage records') }}
+        {% if report_source != 'llm' %}· {{ L('添加', 'add') }} <code>?llm=1</code> {{ L('可启用模型生成的叙述', 'for provider prose') }}{% endif %}
+      </span>
     </div>
-    <div class="card stat-card">
-        <div class="num" style="color:#dc2626;">{{ highest_risk_level }}</div>
-        <div class="lbl">最高风险级别 · {{ highest_risk_label }}</div>
-    </div>
-    <div class="card stat-card">
-        <div class="num" style="color:var(--text);font-size:28px;">{{ most_frequent_level }}</div>
-        <div class="lbl">最高频级别 · {{ most_frequent_label }} ({{ level_counts[most_frequent_level] }} 次)</div>
-    </div>
-    <div class="card stat-card">
-        <div class="num" style="color:#8b5cf6;font-size:28px;">{{ nlos_count + low_conf_count + conflict_count }}</div>
-        <div class="lbl">传感质量事件合计</div>
-    </div>
-</div>
+    <div class="md">{{ report_text | markdown | safe }}</div>
+  </div>
 
-<div class="grid-2 mb-16">
-    <div class="card">
-        <div class="card-header"><h2>决策级别分布</h2></div>
-        <div class="card-body">
-            {% set total = [total_episodes, 1] | max %}
-            <div class="level-bar">
-                <div class="level-seg" style="width:{{ (level_counts.L0 / total * 100)|round(1) }}%;background:#22c55e;" title="L0: {{ level_counts.L0 }}"></div>
-                <div class="level-seg" style="width:{{ (level_counts.L1 / total * 100)|round(1) }}%;background:#eab308;" title="L1: {{ level_counts.L1 }}"></div>
-                <div class="level-seg" style="width:{{ (level_counts.L2 / total * 100)|round(1) }}%;background:#f97316;" title="L2: {{ level_counts.L2 }}"></div>
-                <div class="level-seg" style="width:{{ (level_counts.L3 / total * 100)|round(1) }}%;background:#ef4444;" title="L3: {{ level_counts.L3 }}"></div>
-                <div class="level-seg" style="width:{{ (level_counts.L4 / total * 100)|round(1) }}%;background:#991b1b;" title="L4: {{ level_counts.L4 }}"></div>
+  {% else %}
+
+  <!-- ═══ Figure 2 grammar 2 — status banner and headline figures ═══ -->
+  <div class="panel-body" style="padding-bottom:0">
+    <div class="subcard subcard--quality banner">
+      <div class="banner-msg">
+        <i data-lucide="{{ 'circle-alert' if highest_risk_level in ['L3', 'L4'] else 'shield-check' }}"></i>
+        <div>
+          <div class="flex flex-wrap gap-8">
+            <span class="badge {{ {'ok': 'badge-ok', 'warn': 'badge-warn', 'danger': 'badge-danger'}.get(report_status.tone, 'badge-neutral') }}">{{ status_label }}</span>
+            <h3>{{ report_status.title }}</h3>
+          </div>
+          <p class="text-sm text-muted mt-8">{{ report_status.detail }}</p>
+        </div>
+      </div>
+      <div class="banner-figures">
+        <div class="banner-figure">
+          <span class="kpi-value num">{{ summary_block.total_records }}</span>
+          <span class="label">{{ L('事件', 'Events') }}</span>
+        </div>
+        <div class="banner-figure">
+          <span class="kpi-value num">{{ fall_count }}</span>
+          <span class="label">{{ L('跌倒', 'Falls') }}</span>
+        </div>
+        <div class="banner-figure">
+          <span class="kpi-value num">{{ summary_block.highest_tier or '—' }}</span>
+          <span class="label">{{ L('最高分级', 'Highest tier') }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Figure 2 grammar 3 — vital-sign trends ═══ -->
+  <div class="panel-body">
+    <section class="panel panel--sense">
+      <div class="panel-head">
+        <i data-lucide="activity"></i>
+        <h2>{{ L('生命体征趋势', 'Vital-sign trends') }}</h2>
+      </div>
+      <div class="panel-body">
+        <div class="vital-grid">
+          {% for metric in metric_cards %}
+          <div class="subcard vital-cell vital-cell--{{ 'hr' if metric.field == 'hr' else 'rr' if metric.field == 'rr' else 'temp' }}">
+            <i data-lucide="{{ 'heart-pulse' if metric.field == 'hr' else 'waves' if metric.field == 'rr' else 'thermometer' }}"></i>
+            <div class="metric">
+              <div>
+                <span class="label">{{ {'hr': L('心率', 'Heart rate'), 'rr': L('呼吸率', 'Respiration rate'), 'body_temp': L('体表温度', 'Surface temperature')}[metric.field] }}</span>
+                <span class="metric-value num">{{ metric.latest if metric.latest is not none else '--' }}</span><span class="metric-unit">{{ metric.unit }}</span>
+              </div>
             </div>
-            {% for lv in ['L0', 'L1', 'L2', 'L3', 'L4'] %}
-            <div class="stat-row">
-                <span class="flex gap-4"><span class="status-dot {{ 'ok' if lv=='L0' else 'warn' if lv in ('L1','L2') else 'danger' }}" style="display:inline-block;"></span>{{ lv }}</span>
-                <span class="val">{{ level_counts[lv] }} 次</span>
+          </div>
+          {% endfor %}
+        </div>
+        <div id="weekly-chart" class="mt-12"></div>
+        <div class="table-wrap mt-8">
+          <table class="data">
+            <thead>
+              <tr>
+                <th>{{ L('指标', 'Metric') }}</th>
+                <th class="num">{{ L('最新', 'Latest') }}</th>
+                <th class="num">{{ L('均值', 'Mean') }}</th>
+                <th class="num">{{ L('范围', 'Range') }}</th>
+                <th class="num">{{ L('样本数', 'Samples') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for m in metric_cards %}
+              <tr>
+                <td>{{ {'hr': L('心率', 'Heart rate'), 'rr': L('呼吸率', 'Respiration rate'), 'body_temp': L('体表温度', 'Surface temperature')}[m.field] }}</td>
+                <td class="num">{{ m.latest if m.latest is not none else '—' }}</td>
+                <td class="num">{{ m.mean if m.mean is not none else '—' }}</td>
+                <td class="num">{% if m.min is not none %}{{ m.min }}–{{ m.max }}{% else %}—{% endif %}</td>
+                <td class="num">{{ m.count }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ═══ Figure 2 grammar 4 — baseline · fusion · agent outcome ═══ -->
+  <div class="panel-body">
+    <div class="hero-row">
+
+      <!-- Personal baseline (blue) -->
+      <section class="subcard subcard--sense hero-card">
+        <span class="label">{{ L('个人基线', 'Personal baseline') }}</span>
+        <div class="hero-flex">
+          <table class="z-table">
+            <thead>
+              <tr>
+                <th>{{ L('指标', 'Metric') }}</th>
+                <th style="text-align:right">{{ L('偏离（z）', 'Deviation (z)') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in baseline_summary %}
+              <tr>
+                <td>
+                  <div class="fw-600">{{ {'hr': L('心率', 'Heart rate'), 'rr': L('呼吸率', 'Respiration rate'), 'body_temp': L('体表温度', 'Surface temperature')}[item.field] }}</div>
+                  {% if item.baseline %}
+                  <div class="text-xs text-muted num">{{ item.latest }} {{ item.unit }} · {{ L('基线', 'baseline') }} {{ item.baseline.mean }} ± {{ item.baseline.std }} · n={{ item.baseline.count }}</div>
+                  {% else %}
+                  <div class="text-xs text-muted">{{ L('历史样本不足', 'Insufficient history') }}</div>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if item.baseline %}
+                  <span class="badge {{ 'badge-danger' if (item.baseline.z_score | abs) >= 2 else 'badge-warn' if (item.baseline.z_score | abs) >= 1 else 'badge-ok' }} num">{{ '%+.2f' | format(item.baseline.z_score) }}</span>
+                  {% else %}
+                  <span class="badge badge-neutral">{{ L('不适用', 'N/A') }}</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% else %}
+              <tr><td colspan="2" class="text-sm text-muted">{{ L('暂无基线对比数据。', 'No baseline comparison available.') }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Confidence-aware fusion (green) -->
+      <section class="subcard subcard--quality hero-card">
+        <span class="label">{{ L('置信度感知融合', 'Confidence-aware fusion') }}</span>
+        <div class="hero-flex">
+          <div>
+            <span class="kpi-value value-lg num">{{ sensing_quality.quality_event_rate_pct }}<span class="unit">%</span></span>
+            <span class="label">{{ L('记录带质量标记', 'Records carrying a quality flag') }}</span>
+          </div>
+          <div class="fact-list">
+            <div class="fact-row">
+              <span class="text-sm text-muted">{{ L('WiFi BFI 平均置信度', 'Mean WiFi BFI confidence') }}</span>
+              <b class="num">{{ sensing_quality.mean_wifi_confidence_pct ~ '%' if sensing_quality.mean_wifi_confidence_pct is not none else L('不适用', 'N/A') }}</b>
+            </div>
+            <div class="fact-row">
+              <span class="text-sm text-muted">{{ L('mmWave 平均置信度', 'Mean mmWave confidence') }}</span>
+              <b class="num">{{ sensing_quality.mean_mmwave_confidence_pct ~ '%' if sensing_quality.mean_mmwave_confidence_pct is not none else L('不适用', 'N/A') }}</b>
+            </div>
+            <div class="fact-row">
+              <span class="text-sm text-muted">{{ L('主导仲裁分支', 'Dominant arbitration branch') }}</span>
+              <b>
+                {%- if sensing_quality.dominant_branches -%}
+                  {%- for d in sensing_quality.dominant_branches -%}{{ d.metric | upper }} → {{ d.branch }} ({{ d.count }}){% if not loop.last %}, {% endif %}{%- endfor -%}
+                {%- else -%}{{ L('不适用', 'N/A') }}{%- endif -%}
+              </b>
+            </div>
+            <div class="fact-row">
+              <span class="text-sm text-muted">{{ L('带质量标记的记录', 'Quality-flagged records') }}</span>
+              <b class="num">{{ sensing_quality.quality_flag_count }}</b>
+            </div>
+          </div>
+          <p class="text-xs text-muted">{{ sensing_quality.note }}</p>
+        </div>
+      </section>
+
+      <!-- Agent outcome (orange) -->
+      <section class="subcard subcard--agent hero-card">
+        <span class="label">{{ L('Agent 结果', 'Agent outcome') }}</span>
+        <div class="hero-flex">
+          {% if evidence_trail %}
+          <div>
+            <div class="fw-600">{{ evidence_trail.trigger.event_label or evidence_trail.trigger.event_type }}</div>
+            <div class="text-xs text-muted num">{{ evidence_trail.timestamp[:16].replace('T',' ') }} · {{ evidence_trail.trigger.event_id }}</div>
+          </div>
+          <div class="flex flex-wrap gap-8">
+            <span class="badge {{ 'badge-danger' if evidence_trail.tier in ['L3', 'L4'] else 'badge-warn' if evidence_trail.tier in ['L1', 'L2'] else 'badge-ok' }}">{{ evidence_trail.tier }}</span>
+            <span class="text-xs text-muted">{{ evidence_trail.tier_label }} · {{ evidence_trail.channel_label }}</span>
+          </div>
+          {% else %}
+          <p class="text-sm text-muted">{{ L('本周期没有分诊记录。', 'No triage record for this period.') }}</p>
+          {% endif %}
+          <div class="tier-grid">
+            {% for tier in ['L0', 'L1', 'L2', 'L3', 'L4'] %}
+            <div class="subcard tier-box{{ ' tier-box--top' if tier == summary_block.highest_tier else '' }}">
+              <div class="value-sm num">{{ summary_block.tier_counts[tier] }}</div>
+              <div class="label">{{ tier }}</div>
             </div>
             {% endfor %}
+          </div>
+          <p class="text-xs text-muted">
+            {{ L('最高', 'Highest') }} {{ summary_block.highest_tier or '—' }}{% if summary_block.highest_tier_label %} · {{ summary_block.highest_tier_label }}{% endif %}
+            · {{ L('最多', 'Most frequent') }} {{ summary_block.most_frequent_tier or '—' }}{% if summary_block.most_frequent_tier_label %} · {{ summary_block.most_frequent_tier_label }}{% endif %}
+          </p>
         </div>
+      </section>
+
+    </div>
+  </div>
+
+  <!-- ═══ Supporting panels ═══ -->
+  <div class="panel-body stack">
+
+    <!-- Weekly summary -->
+    <section class="panel panel--neutral">
+      <div class="panel-head">
+        <i data-lucide="calendar-check"></i>
+        <h2>{{ L('本周摘要', 'Weekly summary') }}</h2>
+        <span class="text-xs text-muted ml-auto num">{{ summary_block.total_records }} {{ L('条分诊记录', 'triage records') }}</span>
+      </div>
+      <div class="panel-body">
+        <div class="grid-auto mb-16">
+          <div class="subcard">
+            <span class="kpi-value num">{{ summary_block.escalated_count }}</span>
+            <span class="label">{{ L('升级处理 (L3/L4)', 'Escalated (L3/L4)') }}</span>
+          </div>
+          <div class="subcard">
+            <span class="kpi-value num">{{ summary_block.reflex_count }}<span class="unit">/</span>{{ summary_block.deliberative_count }}</span>
+            <span class="label">{{ L('反射弧 / 审议式', 'Reflex / deliberative') }}</span>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr>
+                <th>{{ L('分级', 'Tier') }}</th>
+                <th>{{ L('策略动作', 'Policy action') }}</th>
+                <th class="num">{{ L('记录数', 'Records') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for tier in ['L0', 'L1', 'L2', 'L3', 'L4'] %}
+              <tr{% if tier == summary_block.highest_tier %} class="is-highlight"{% endif %}>
+                <td><b>{{ tier }}</b></td>
+                <td>{{ {'L0': L('静默记录', 'Routine observation'), 'L1': L('持续观察', 'Continued observation'), 'L2': L('居民提醒', 'Resident prompt'), 'L3': L('家属告警', 'Family notification'), 'L4': L('紧急路由', 'Emergency routing')}[tier] }}</td>
+                <td class="num">{{ summary_block.tier_counts[tier] }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Evidence trail and routing -->
+    <section class="panel panel--agent">
+      <div class="panel-head">
+        <i data-lucide="git-branch"></i>
+        <h2>{{ L('证据链', 'Evidence trail') }}</h2>
+      </div>
+      <div class="panel-body">
+        {% if evidence_trail %}
+        <div class="grid-auto mb-16">
+          <div class="subcard">
+            <span class="kpi-value num">{{ evidence_trail.anchors | length }}</span>
+            <span class="label">{{ L('证据锚点', 'Evidence anchors') }}{{ 's' if evidence_trail.anchors | length != 1 else '' }}</span>
+          </div>
+          <div class="subcard">
+            <span class="kpi-value num">{{ evidence_trail.step_count if evidence_trail.step_count is not none else '—' }}</span>
+            <span class="label">{{ L('推理步数', 'Reasoning steps') }}</span>
+          </div>
+          <div class="subcard">
+            <span class="value-md">{{ evidence_trail.channel_label }}</span>
+            <span class="label">{{ L('下发渠道', 'Delivery channel') }}</span>
+          </div>
+          <div class="subcard">
+            <span class="value-md num">{{ evidence_trail.episode_id }}</span>
+            <span class="label">{{ L('已落库的 EpisodeLog', 'Persisted EpisodeLog') }}</span>
+          </div>
+        </div>
+
+        {% if evidence_trail.trigger.reason %}
+        <div class="fact-row mb-8">
+          <span class="text-sm text-muted">{{ L('触发原因', 'Trigger reason') }}</span>
+          <b class="text-sm">{{ evidence_trail.trigger.reason }}</b>
+        </div>
+        {% endif %}
+        {% if evidence_trail.interpretation %}
+        <div class="fact-row mb-8">
+          <span class="text-sm text-muted">{{ L('Agent 判读', 'Agent interpretation') }}</span>
+          <b class="text-sm">{{ evidence_trail.interpretation }}</b>
+        </div>
+        {% endif %}
+
+        <div class="flex flex-wrap gap-8 mt-8">
+          <span class="chip {{ 'chip--alert' if evidence_trail.reflex else 'chip--sense' }}">{{ L('反射弧 — 确定性', 'Reflex — deterministic') if evidence_trail.reflex else L('审议式 ReAct 循环', 'Deliberative ReAct loop') }}{% if not evidence_trail.reflex and evidence_trail.step_count is not none %} · {{ evidence_trail.step_count }} {{ L('步', 'steps') }}{% endif %}</span>
+          <span class="chip chip--quality">{{ evidence_trail.safety_boundary }}</span>
+          {% for t in evidence_trail.tools_called %}<span class="chip">{{ t }}</span>{% endfor %}
+        </div>
+
+        <div class="table-wrap mt-12">
+          <table class="data">
+            <thead>
+              <tr>
+                <th>{{ L('证据锚点', 'Evidence anchor') }}</th>
+                <th>{{ L('来源', 'Source') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for a in evidence_trail.anchors %}
+              <tr>
+                <td>{{ a.finding or a.type or L('锚点', 'anchor') }}</td>
+                <td><span class="source-tag">{{ a.source_label }}</span></td>
+              </tr>
+              {% else %}
+              <tr><td colspan="2" class="table-empty">{{ L('本条记录未记录任何证据锚点。', 'No evidence anchors recorded for this record.') }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <p class="text-xs text-muted mt-8">{{ evidence_trail.trigger.event_label or evidence_trail.trigger.event_type }} · {{ evidence_trail.trigger.event_id }} · {{ evidence_trail.tier }} {{ evidence_trail.tier_label }}</p>
+
+        <div class="flex flex-wrap gap-8 mt-12">
+          <a class="btn btn-secondary btn-sm" href="/episode/{{ evidence_trail.episode_id }}"><i data-lucide="external-link"></i> {{ L('打开完整诊断事件', 'Open full episode') }}</a>
+          <a class="btn btn-secondary btn-sm" href="/episodes"><i data-lucide="list"></i> {{ L('全部诊断事件', 'All episodes') }}</a>
+        </div>
+        {% else %}
+        <p class="empty-state">{{ L('本周期没有可用的分诊记录，因此无法展示证据链。', 'No triage record available for this period, so no evidence trail can be shown.') }}</p>
+        {% endif %}
+
+        <div class="grid-2 mt-16">
+          <div>
+            <h4 class="body-title">{{ L('下发渠道', 'Delivery channel') }}</h4>
+            <div class="table-wrap">
+              <table class="data">
+                <tbody>
+                  {% for c in action_routing.channels %}
+                  <tr><td>{{ c.label }}</td><td class="num">{{ c.count }}</td></tr>
+                  {% else %}
+                  <tr><td class="table-empty">{{ L('本周期暂无数据。', 'No data available for this period.') }}</td></tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div>
+            <h4 class="body-title">{{ L('事件类型', 'Event type') }}</h4>
+            <div class="table-wrap">
+              <table class="data">
+                <tbody>
+                  {% for e in action_routing.event_types %}
+                  <tr><td>{{ e.label }}</td><td class="num">{{ e.count }}</td></tr>
+                  {% else %}
+                  <tr><td class="table-empty">{{ L('本周期暂无数据。', 'No data available for this period.') }}</td></tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Sensing quality -->
+    <section class="panel panel--quality">
+      <div class="panel-head">
+        <i data-lucide="badge-check"></i>
+        <h2>{{ L('传感质量', 'Sensing quality') }}</h2>
+      </div>
+      <div class="panel-body">
+        <div class="grid-auto">
+          <div class="subcard">
+            <span class="kpi-value num">{{ sensing_quality.nlos_count }}</span>
+            <span class="label">{{ L('NLOS 遮挡降级', 'NLOS degradation') }}</span>
+          </div>
+          <div class="subcard">
+            <span class="kpi-value num">{{ sensing_quality.low_confidence_count }}</span>
+            <span class="label">{{ L('低置信度（双分支）', 'Low confidence (both branches)') }}</span>
+          </div>
+          <div class="subcard">
+            <span class="kpi-value num">{{ sensing_quality.modality_conflict_count }}</span>
+            <span class="label">{{ L('模态冲突', 'Modality conflicts') }}</span>
+          </div>
+          <div class="subcard">
+            <span class="kpi-value num">{{ sensing_quality.quality_event_rate_pct }}<span class="unit">%</span></span>
+            <span class="label">{{ L('带质量标记的记录占比', 'Quality-flagged records') }}</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Uncertainty and reflex path -->
+    <section class="panel panel--neutral">
+      <div class="panel-head">
+        <i data-lucide="circle-help"></i>
+        <h2>{{ L('不确定性', 'Uncertainty') }} &amp; {{ L('反射弧路径', 'reflex path') }}</h2>
+      </div>
+      <div class="panel-body grid-2">
+        <div>
+          <div class="grid-2 mb-16">
+            <div class="subcard">
+              <span class="kpi-value num">{{ uncertainty.needs_recheck_count }}</span>
+              <span class="label">{{ L('已请求复查', 'Recheck requested') }}</span>
+            </div>
+            <div class="subcard">
+              <span class="kpi-value num">{{ uncertainty.needs_recheck_pct }}<span class="unit">%</span></span>
+              <span class="label">{{ L('记录占比', 'Share of records') }}</span>
+            </div>
+          </div>
+          <h4 class="body-title">{{ L('声明的传感质量', 'Declared sensing quality') }}</h4>
+          <div class="table-wrap">
+            <table class="data">
+              <tbody>
+                {% for q in uncertainty.sensing_quality_levels %}
+                <tr><td>{{ q.label }}</td><td class="num">{{ q.count }}</td></tr>
+                {% else %}
+                <tr><td class="table-empty">{{ L('未记录。', 'Not recorded.') }}</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div>
+          <h4 class="body-title">{{ L('缺失证据', 'Missing evidence') }}</h4>
+          <div class="table-wrap">
+            <table class="data">
+              <tbody>
+                {% for m in uncertainty.missing_evidence %}
+                <tr><td>{{ m.item }}</td><td class="num">{{ m.count }}</td></tr>
+                {% else %}
+                <tr><td class="table-empty">{{ L('未声明缺失证据。', 'No missing evidence declared.') }}</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <h4 class="body-title mt-16">{{ L('决策路径', 'Decision path') }}</h4>
+          <div class="table-wrap">
+            <table class="data">
+              <tbody>
+                <tr><td>{{ L('反射弧路径（确定性，不调用 LLM）', 'Reflex path (deterministic, no LLM)') }}</td><td class="num">{{ summary_block.reflex_count }}</td></tr>
+                <tr><td>{{ L('审议式 ReAct 循环', 'Deliberative ReAct loop') }}</td><td class="num">{{ summary_block.deliberative_count }}</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Published validation results -->
+    <section class="panel panel--quality">
+      <div class="panel-head">
+        <i data-lucide="flask-conical"></i>
+        <h2>{{ L('已发表的验证结果', 'Published validation results') }}</h2>
+      </div>
+      <div class="panel-body">
+        <p class="text-sm text-muted mb-16">
+          {{ L('已发表结果来自', 'Reported results from') }} <em>{{ validation.paper.title }}</em> ({{ validation.paper.venue }}, {{ validation.paper.location }}){{ L('。', '.') }}
+          DOI <a href="{{ validation.paper.url }}" target="_blank" rel="noopener">{{ validation.paper.doi }}</a>{{ L('。', '.') }}
+        </p>
+
+        <div class="grid-auto mb-16">
+          {% for kpi in kpi_metrics %}
+          <div class="subcard">
+            <span class="kpi-value num">{{ kpi.value }}<span class="unit">{{ kpi.unit }}</span></span>
+            <span class="label">{{ {'hr_mae': L('心率 MAE', 'Heart rate MAE'), 'rr_mae': L('呼吸率 MAE', 'Respiratory rate MAE'), 'fall_accuracy': L('跌倒识别', 'Fall recognition'), 'agent_checklist': L('Agent 检查清单通过率', 'Agent checklist pass rate')}.get(kpi.key, kpi.label) }}</span>
+            <span class="text-xs text-muted">{{ kpi.detail }}</span>
+          </div>
+          {% endfor %}
+        </div>
+
+        <div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr>
+                <th>{{ L('任务', 'Task') }}</th>
+                <th>{{ L('真值', 'Ground truth') }}</th>
+                <th>{{ L('方法', 'Method') }}</th>
+                <th class="num">MAE</th>
+                <th class="num">RMSD</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in validation.vital_signs %}
+                {% for m in row.methods %}
+                <tr{% if m.is_final %} class="is-highlight"{% endif %}>
+                  {% if loop.first %}<td rowspan="{{ row.methods | length }}">{{ F(row, 'task') }}</td><td rowspan="{{ row.methods | length }}">{{ F(row, 'ground_truth') }}</td>{% endif %}
+                  <td>{{ m.method }}</td>
+                  <td class="num">{{ m.mae }}</td>
+                  <td class="num">{{ m.rmsd }}</td>
+                </tr>
+                {% endfor %}
+              {% endfor %}
+              <tr>
+                <td>{{ F(validation.fall_recognition, 'task') }}</td>
+                <td>{{ F(validation.fall_recognition, 'ground_truth') }}</td>
+                <td>{{ validation.fall_recognition.method }}</td>
+                <td class="num" colspan="2">{{ validation.fall_recognition.accuracy_pct }}% {{ L('准确率', 'accuracy') }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="grid-auto mt-12">
+          <div class="subcard">
+            <span class="kpi-value num">{{ validation.multi_interval.intervals }}</span>
+            <span class="label">{{ L('已验证区间数', 'Intervals validated') }}</span>
+          </div>
+          <div class="subcard">
+            <span class="kpi-value num">{{ validation.multi_interval.state_rows }}</span>
+            <span class="label">{{ L('逐秒状态行', 'One-second state rows') }}</span>
+          </div>
+          <div class="subcard">
+            <span class="kpi-value num">{{ validation.agent_evaluation.overall.criteria_passed }}/{{ validation.agent_evaluation.overall.criteria_total }}</span>
+            <span class="label">{{ L('Agent 检查清单', 'Agent checklist') }}</span>
+          </div>
+          <div class="subcard">
+            <span class="kpi-value num">{{ validation.agent_evaluation.overall.pass_rate_pct }}<span class="unit">%</span></span>
+            <span class="label">{{ L('检查清单通过率', 'Checklist pass rate') }}</span>
+          </div>
+        </div>
+
+        <div class="table-wrap mt-12">
+          <table class="data">
+            <thead>
+              <tr>
+                <th>{{ L('Agent 评测层级', 'Agent evaluation layer') }}</th>
+                <th class="num">{{ L('匹配数', 'Matched') }}</th>
+                <th class="num">{{ L('总数', 'Total') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>{{ L('确定性事件首筛', 'Deterministic event screening') }}</td><td class="num">{{ validation.agent_evaluation.deterministic.matched }}</td><td class="num">{{ validation.agent_evaluation.deterministic.cases }}</td></tr>
+              <tr><td>{{ L('融合仲裁（模态冲突）', 'Fusion arbitration (modality conflict)') }}</td><td class="num">{{ validation.agent_evaluation.deterministic.fusion_matched }}</td><td class="num">{{ validation.agent_evaluation.deterministic.fusion_cases }}</td></tr>
+              <tr><td>{{ L('隐藏答案分诊 — 分级', 'Hidden-answer triage — tier') }} &amp; {{ L('渠道', 'channel') }}</td><td class="num">{{ validation.agent_evaluation.triage.tier_and_channel_matched }}</td><td class="num">{{ validation.agent_evaluation.triage.scenarios }}</td></tr>
+              <tr><td>{{ L('隐藏答案分诊 — 证据链保留', 'Hidden-answer triage — trace preserved') }}</td><td class="num">{{ validation.agent_evaluation.triage.trace_preserved }}</td><td class="num">{{ validation.agent_evaluation.triage.scenarios }}</td></tr>
+              <tr><td>{{ L('P95 时延 — 确定性', 'P95 latency — deterministic') }}</td><td class="num" colspan="2">{{ validation.agent_evaluation.latency.deterministic_p95_ms }} ms</td></tr>
+              <tr><td>{{ L('P95 时延 — LLM 分诊', 'P95 latency — LLM triage') }} ({{ validation.agent_evaluation.triage.model }})</td><td class="num" colspan="2">{{ validation.agent_evaluation.latency.llm_triage_p95_ms }} ms</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Indicator and screening coverage -->
+    <section class="panel panel--neutral">
+      <div class="panel-head">
+        <i data-lucide="table-2"></i>
+        <h2>{{ L('指标', 'Indicator') }} &amp; {{ L('筛查覆盖', 'screening coverage') }}</h2>
+      </div>
+      <div class="panel-body">
+        <div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr>
+                <th>{{ L('状况与筛查方向', 'Condition and screening direction') }}</th>
+                {% for key, label in (validation.indicator_columns_zh if lang == 'zh' and validation.indicator_columns_zh else validation.indicator_columns) %}<th class="num">{{ label }}</th>{% endfor %}
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in validation.indicator_coverage %}
+              <tr>
+                <td>{{ F(row, 'condition') }}{% if row.refs %} <span class="source-tag">[{{ row.refs | join(', ') }}]</span>{% endif %}</td>
+                {% for key, label in (validation.indicator_columns_zh if lang == 'zh' and validation.indicator_columns_zh else validation.indicator_columns) %}
+                <td class="num">{% if row.coverage.get(key) %}{{ L('是', 'Yes') }}{% else %}—{% endif %}</td>
+                {% endfor %}
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Privacy and human oversight -->
+    <section class="panel panel--neutral">
+      <div class="panel-head">
+        <i data-lucide="shield-check"></i>
+        <h2>{{ privacy_boundary.title }}</h2>
+      </div>
+      <div class="panel-body">
+        <div class="grid-2">
+          <ul class="plainlist">
+            {% for s in privacy_boundary.statements %}<li>{{ s }}</li>{% endfor %}
+          </ul>
+          <div class="fact-list">
+            <div class="fact-row">
+              <span class="text-sm text-muted">{{ L('记录时间戳', 'Record timestamps') }}</span>
+              <b class="num">{{ summary_block.total_records }} {{ L('条分诊记录', 'triage records') }}</b>
+            </div>
+            <div class="fact-row">
+              <span class="text-sm text-muted">{{ L('采样窗口', 'Sampled windows') }}</span>
+              <b class="num">{{ sensing.sampled }} / {{ sensing.total }}</b>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- The single consolidated care-support note -->
+    <div class="callout callout--quality boundary-note">
+      <i data-lucide="shield-check"></i>
+      <p>
+        {{ L('本报告是看护支持工具', 'This report is a care-support tool') }}<strong>{{ L('，不是医学诊断、治疗方案或用药建议', ', not a medical diagnosis, treatment plan, or medication advice') }}</strong>{{ L('。L0–L4 是项目分诊策略，不得用于独立临床决策；高风险路由需授权人工确认。', '. L0–L4 are project triage policy and must not be used for independent clinical decisions; high-risk routing requires authorized human confirmation.') }}
+        {{ L('z-score 表示相对该居民自身历史的统计偏离，即使落在人群参考范围内，对该个体仍可能属于异常。', "A z-score is a statistical deviation from the resident's own history — a value inside the population reference range can still be abnormal for this individual.") }}
+        {{ validation.clinical_boundary_zh if lang == 'zh' and validation.clinical_boundary_zh else validation.clinical_boundary }}
+      </p>
     </div>
 
-    <div class="card">
-        <div class="card-header"><h2>传感质量</h2></div>
-        <div class="card-body">
-            <div class="stat-row"><span>NLOS 遮挡</span><span class="val">{{ nlos_count }} 次</span></div>
-            <div class="stat-row"><span>低置信度</span><span class="val">{{ low_conf_count }} 次</span></div>
-            <div class="stat-row"><span>模态冲突</span><span class="val">{{ conflict_count }} 次</span></div>
-        </div>
-    </div>
-</div>
+  </div>
 
-{% if event_type_breakdown %}
-<div class="card mb-16">
-    <div class="card-header"><h2>事件类型分布</h2></div>
-    <div class="card-body">
-        <div class="level-bar">
-            {% set et_total = [event_type_breakdown[0]['count'] if event_type_breakdown else 1, 1] | max %}
-            {% for item in event_type_breakdown[:8] %}
-            <div class="level-seg" style="width:{{ (item.count / et_total * 100)|round(1) }}%;background:{{ loop.cycle('#3b82f6','#8b5cf6','#f97316','#ef4444','#22c55e','#eab308','#d946ef','#6366f1') }};" title="{{ item.type | event_label }}: {{ item.count }}"></div>
-            {% endfor %}
-        </div>
-        {% for item in event_type_breakdown[:10] %}
-        <div class="event-type-row">
-            <span>{{ item.type | event_label }}</span>
-            <span class="fw-600">{{ item.count }} 次</span>
-        </div>
-        {% endfor %}
-    </div>
-</div>
-{% endif %}
+  {% endif %}
 
-{% if action_breakdown %}
-<div class="card mb-16">
-    <div class="card-header"><h2>行动分布</h2></div>
-    <div class="card-body">
-        {% for item in action_breakdown %}
-        <div class="stat-row">
-            <span>{{ item.channel }}</span>
-            <span class="val">{{ item.count }} 次</span>
-        </div>
-        {% endfor %}
-    </div>
-</div>
-{% endif %}
+</main>
+{% endblock %}
 
-{% endif %}
-
-<div style="margin-top:16px;text-align:center;color:var(--text-muted);font-size:12px;" class="no-print">
-    <button class="btn btn-secondary btn-sm" onclick="window.print()"><i data-lucide="printer"></i>打印报告</button>
-</div>
+{% block scripts %}
+<script>
+  // Chart colours come from the design tokens, never from literals here.
+  const CSSVAR = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const weekly = {{ trend_data | tojson }};
+  const chartEl = document.getElementById('weekly-chart');
+  if (chartEl) {
+    const chart = echarts.init(chartEl, null, {renderer:'svg'});
+    const C = n => CSSVAR(n);
+    const ink = C('--ink'), muted = C('--muted'), sense = C('--sense'), quality = C('--quality'), agent = C('--agent');
+    const flags = weekly.timestamps.map((t,i) => weekly.quality[i] && weekly.hr[i] != null ? [t, weekly.hr[i]] : null).filter(Boolean);
+    chart.setOption({
+      animation: false,
+      grid: {left: 50, right: 50, top: 26, bottom: 34},
+      tooltip: {trigger: 'axis', backgroundColor: ink, borderWidth: 0, textStyle: {color: '#fff', fontSize: 12}},
+      legend: {data: [T('心率','Heart rate'), T('呼吸率','Respiration rate'), T('质量标记','Quality flag')], top: 0, textStyle: {color: muted, fontSize: 12}},
+      xAxis: {type: 'category', data: weekly.timestamps, boundaryGap: false, axisLine: {lineStyle: {color: C('--line')}}, axisTick: {show: false}, axisLabel: {color: muted, fontSize: 12, formatter: v => v ? v.slice(5,16).replace('T',' ') : ''}},
+      yAxis: [
+        {type: 'value', name: 'bpm', scale: true, nameTextStyle: {color: muted, fontSize: 12}, splitLine: {lineStyle: {color: C('--line-soft')}}, axisLabel: {color: muted, fontSize: 12}},
+        {type: 'value', name: '/min', scale: true, nameTextStyle: {color: muted, fontSize: 12}, splitLine: {show: false}, axisLabel: {color: muted, fontSize: 12}}
+      ],
+      series: [
+        {name: T('心率','Heart rate'), type: 'line', data: weekly.hr, symbol: 'none', lineStyle: {width: 2, color: sense}, yAxisIndex: 0},
+        {name: T('呼吸率','Respiration rate'), type: 'line', data: weekly.rr, symbol: 'none', lineStyle: {width: 2, color: quality}, yAxisIndex: 1},
+        {name: T('质量标记','Quality flag'), type: 'scatter', data: flags, symbolSize: 7, itemStyle: {color: agent, borderColor: C('--surface'), borderWidth: 1}, yAxisIndex: 0}
+      ]
+    });
+    addEventListener('resize', () => chart.resize());
+  }
+</script>
 {% endblock %}

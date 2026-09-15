@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}诊断事件{% endblock %}
+{% block title %}{{ L('诊断事件', 'Episodes') }}{% endblock %}
 {% block head_extra %}
 <style>
     .episode-row { cursor: pointer; }
@@ -11,8 +11,8 @@
 {% endblock %}
 {% block content %}
 <div class="flex flex-wrap mb-16">
-    <h1>诊断事件</h1>
-    <span class="text-muted text-sm ml-auto" id="episode-count">加载中...</span>
+    <h1>{{ L('诊断事件', 'Episodes') }}</h1>
+    <span class="text-muted text-sm ml-auto" id="episode-count">{{ L('加载中...', 'Loading...') }}</span>
 </div>
 
 <!-- Filters -->
@@ -20,7 +20,7 @@
     <div class="card-body">
         <div class="filter-bar">
             <select id="filter-level" onchange="applyFilters()">
-                <option value="">全部级别</option>
+                <option value="">{{ L('全部级别', 'All tiers') }}</option>
                 <option value="L0">L0</option>
                 <option value="L1">L1</option>
                 <option value="L2">L2</option>
@@ -28,19 +28,19 @@
                 <option value="L4">L4</option>
             </select>
             <select id="filter-event-type" onchange="applyFilters()">
-                <option value="">全部类型</option>
-                <option value="hr_abnormal">心率异常</option>
-                <option value="rr_bradypnea">呼吸过缓</option>
-                <option value="rr_tachypnea">呼吸急促</option>
-                <option value="rr_baseline_deviation">RR基线偏离</option>
-                <option value="temp_abnormal">体温异常</option>
-                <option value="fall_detected">跌倒</option>
-                <option value="low_confidence">低置信度</option>
-                <option value="nlos_occlusion">NLOS遮挡</option>
-                <option value="modality_conflict">模态冲突</option>
+                <option value="">{{ L('全部类型', 'All types') }}</option>
+                <option value="hr_abnormal">{{ L('心率异常', 'Heart-rate deviation') }}</option>
+                <option value="rr_bradypnea">{{ L('呼吸过缓', 'Bradypnea') }}</option>
+                <option value="rr_tachypnea">{{ L('呼吸急促', 'Tachypnea') }}</option>
+                <option value="rr_baseline_deviation">{{ L('RR基线偏离', 'Respiratory baseline deviation') }}</option>
+                <option value="temp_abnormal">{{ L('体温异常', 'Surface-temperature deviation') }}</option>
+                <option value="fall_detected">{{ L('跌倒', 'Fall detected') }}</option>
+                <option value="low_confidence">{{ L('低置信度', 'Low confidence') }}</option>
+                <option value="nlos_occlusion">{{ L('NLOS遮挡', 'NLOS degradation') }}</option>
+                <option value="modality_conflict">{{ L('模态冲突', 'Modality conflict') }}</option>
             </select>
-            <input type="text" id="filter-search" placeholder="搜索关键词..." onchange="applyFilters()" style="width:180px;">
-            <button class="btn btn-secondary btn-sm" onclick="clearFilters()">清除筛选</button>
+            <input type="text" id="filter-search" placeholder="{{ L('搜索关键词...', 'Search keywords...') }}" onchange="applyFilters()" style="width:180px;">
+            <button class="btn btn-secondary btn-sm" onclick="clearFilters()">{{ L('清除筛选', 'Clear filters') }}</button>
         </div>
     </div>
 </div>
@@ -51,17 +51,17 @@
         <table>
             <thead>
                 <tr>
-                    <th>级别</th>
-                    <th>事件类型</th>
-                    <th>触发原因</th>
-                    <th>行动</th>
-                    <th>时间</th>
-                    <th>状态</th>
+                    <th>{{ L('级别', 'Tier') }}</th>
+                    <th>{{ L('事件类型', 'Event type') }}</th>
+                    <th>{{ L('触发原因', 'Trigger reason') }}</th>
+                    <th>{{ L('行动', 'Action') }}</th>
+                    <th>{{ L('时间', 'Time') }}</th>
+                    <th>{{ L('状态', 'Status') }}</th>
                     <th></th>
                 </tr>
             </thead>
             <tbody id="episode-tbody">
-                <tr><td colspan="7" class="table-empty">加载中...</td></tr>
+                <tr><td colspan="7" class="table-empty">{{ L('加载中...', 'Loading...') }}</td></tr>
             </tbody>
         </table>
     </div>
@@ -103,16 +103,16 @@ async function loadEpisodes(page) {
         renderEpisodes(d.episodes, d.total, page);
     } catch (e) {
         document.getElementById('episode-tbody').innerHTML =
-            `<tr><td colspan="7" class="table-empty">加载失败: ${e.message}</td></tr>`;
+            `<tr><td colspan="7" class="table-empty">${T('加载失败', 'Load failed')}: ${e.message}</td></tr>`;
     }
 }
 
 function renderEpisodes(episodes, total, page) {
     const tbody = document.getElementById('episode-tbody');
-    document.getElementById('episode-count').textContent = `共 ${total} 条`;
+    document.getElementById('episode-count').textContent = `${T('共', 'Total')} ${total} ${T('条', 'items')}`;
 
     if (!episodes || episodes.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="table-empty">无匹配诊断记录</td></tr>';
+        tbody.innerHTML = `<tr><td colspan="7" class="table-empty">${T('无匹配诊断记录', 'No matching episodes')}</td></tr>`;
         document.getElementById('pagination').innerHTML = '';
         return;
     }
@@ -125,7 +125,7 @@ function renderEpisodes(episodes, total, page) {
         const et = ep.health_event_type || ep.event_id?.split('_')[0] || '?';
         const trigger = ep.health_trigger || ep.event_id || '';
         const act = ep.action?.channel || '—';
-        const chMap = {none:'—', screen:'屏幕', family_push:'家属', emergency:'紧急'};
+        const chMap = {none:'—', screen:T('屏幕', 'Resident screen'), family_push:T('家属', 'Family notification'), emergency:T('紧急', 'Emergency routing')};
         const ts = ep.start_time ? ep.start_time.slice(0,16).replace('T',' ') : '';
         const ev = eventInfo(et);
         const badgeCls = level === 'L0' ? 'ok' : level === 'L1' ? 'warn' : level === 'L2' ? 'warn' : 'danger';
@@ -136,9 +136,8 @@ function renderEpisodes(episodes, total, page) {
             <td><span class="text-xs text-muted">${chMap[act] || act}</span></td>
             <td><span class="text-xs text-muted" style="white-space:nowrap;">${ts}</span></td>
             <td><span class="status-dot ${level === 'L4' ? 'danger' : level === 'L0' ? 'ok' : 'warn'}" style="display:inline-block;"></span></td>
-            <td><a href="/episode/${ep.episode_id}" class="text-xs" style="color:var(--info);text-decoration:none;font-weight:500;">详情 →</a></td>
+            <td><a href="/episode/${ep.episode_id}" class="text-xs" style="color:var(--info);text-decoration:none;font-weight:500;">${T('详情', 'Details')} →</a></td>
         </tr>`;
-    });
     });
     tbody.innerHTML = html;
 
@@ -147,9 +146,9 @@ function renderEpisodes(episodes, total, page) {
     const pg = document.getElementById('pagination');
     if (totalPages <= 1) { pg.innerHTML = ''; return; }
     pg.innerHTML = `
-        <button class="btn btn-secondary btn-sm" onclick="goPage(${page-1})" ${page <= 0 ? 'disabled' : ''}>上一页</button>
+        <button class="btn btn-secondary btn-sm" onclick="goPage(${page-1})" ${page <= 0 ? 'disabled' : ''}>${T('上一页', 'Previous')}</button>
         <span class="text-xs text-muted">${page+1} / ${totalPages}</span>
-        <button class="btn btn-secondary btn-sm" onclick="goPage(${page+1})" ${page >= totalPages-1 ? 'disabled' : ''}>下一页</button>`;
+        <button class="btn btn-secondary btn-sm" onclick="goPage(${page+1})" ${page >= totalPages-1 ? 'disabled' : ''}>${T('下一页', 'Next')}</button>`;
 }
 
 function goPage(page) {
