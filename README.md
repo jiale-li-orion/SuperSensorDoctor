@@ -102,7 +102,8 @@ Comfast WU785AC (WiFi BFI) · Texas Instruments AWR1843 (mmWave radar) · MLX906
 
 | | |
 |---|---|
-| Python | **3.12** (the code uses `list[str]` / `X \| None` syntax). Windows: `py -3.12`, Linux/WSL: `python3.12` |
+| Python | **3.12** (pinned in `.python-version`; `uv` auto-downloads it if missing) |
+| Package manager | **[uv](https://docs.astral.sh/uv/)** (unified for WSL + Windows; replaces the old `.venv/` vs `venv/` split) |
 | OS | Linux, **WSL (recommended)**, or Windows 10/11 with PowerShell |
 | Git | Any recent version |
 | Hardware | **None.** The sensing layer replays configured CSV / derived files — no WiFi card, radar, or thermal array is needed to run the Agent layer |
@@ -133,113 +134,76 @@ cd SuperSensorDoctor
 
 ---
 
-### Step 2 — Bootstrap and run
+### Step 2 — Bootstrap and run (uv, unified for WSL + Windows)
 
-<details open>
-<summary><b>WSL / Linux (bash)</b></summary>
+> Why `uv`? This folder is opened from both WSL and Windows, so the old
+> setup drifted into two venvs (`.venv/` for Linux, `venv/` for Windows —
+> different layouts, absolute paths, unshareable binaries). `uv` unifies
+> them: **one `pyproject.toml` + `uv.lock`, one `.venv/` path per OS**.
+> Each OS runs `uv sync` once locally to materialise its own `.venv/`;
+> both directories stay gitignored, a fresh clone has neither.
 
 ```bash
 cd <repo>
 
-# 1. Confirm the interpreter
-python3 --version                 # expect 3.12.x
+# 0. Install uv once per machine (pick one)
+# WSL / Linux:
+curl -LsSf https://astral.sh/uv/install.sh | sh
+# Windows PowerShell:
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+# …or: pipx install uv / pip install uv
 
-# 2. Create and activate a virtual environment
-python3 -m venv .venv
-source .venv/bin/activate
+# 1. Create .venv + install the locked deps (runtime + dev)
+uv sync
 
-# 3. Install dependencies
-python -m pip install --upgrade pip
-pip install -r requirements.txt
-
-# 4. Optional: enable live LLM triage
+# 2. Optional: enable live LLM triage
+# WSL / Linux (bash):
 export DEEPSEEK_API_KEY=sk-...
+# Windows PowerShell (session-scoped):
+# $env:DEEPSEEK_API_KEY = "sk-..."
 
-# 5. Run
-python main.py                    # → http://127.0.0.1:8000
+# 3. Run (no manual activate needed — `uv run` resolves .venv)
+uv run python main.py              # → http://127.0.0.1:8000
 ```
 
-If step 2 fails with `No module named venv` / `ensurepip is not available`:
+`uv` reads `.python-version` (3.12) and fetches the interpreter if it is
+missing, so `py -3.12` / `python3.12` juggling and `apt install python3-venv`
+are no longer needed. `uv.lock` is committed — every machine resolves the
+same versions (`Markdown==3.10.2` included, so the old
+`ModuleNotFoundError: No module named 'markdown'` on a fresh env is gone).
+
+Makefile shortcuts (bash / WSL; on PowerShell use the `uv …` commands above):
 
 ```bash
-sudo apt update && sudo apt install -y python3-venv python3-pip
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+make install   # uv sync
+make run       # uv run python main.py
+make test      # uv run pytest tests/ -v   ⚠ deletes data/supersense.db
+make clean     # removes __pycache__        ⚠ also deletes data/supersense.db
 ```
-
-To deactivate the environment later: `deactivate`.
-
-</details>
 
 <details>
-<summary><b>Windows (PowerShell)</b></summary>
+<summary><b>Legacy pip path (fallback, no uv)</b></summary>
 
-```powershell
+```bash
 cd <repo>
-
-# 1. Confirm the interpreter (use the py launcher, not bare `python`)
-py -3.12 --version                # expect 3.12.x
-
-# 2. Create and activate a virtual environment
-py -3.12 -m venv venv
-.\venv\Scripts\Activate.ps1
-
-# 3. Install dependencies
-python -m pip install --upgrade pip
+python3 -m venv .venv && source .venv/bin/activate   # WSL / Linux
+# py -3.12 -m venv .venv; .\.venv\Scripts\Activate.ps1  # Windows PowerShell
 pip install -r requirements.txt
-
-# 4. Optional: enable live LLM triage (session-scoped)
-$env:DEEPSEEK_API_KEY = "sk-..."
-
-# 5. Run
-python main.py                    # → http://127.0.0.1:8000
-```
-
-**If `Activate.ps1` is blocked** with *"running scripts is disabled on this system"*,
-allow it for the current shell only (no permanent policy change):
-
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.\venv\Scripts\Activate.ps1
-```
-
-**If the console shows mojibake**, or you hit
-`UnicodeDecodeError: 'gbk' codec can't decode byte ...`, switch the console to
-UTF-8 for the session:
-
-```powershell
-$env:PYTHONUTF8 = "1"
-chcp 65001
 python main.py
 ```
 
-To deactivate the environment later: `deactivate`.
-
-Using **cmd.exe** instead of PowerShell? Same steps, but activate with
-`venv\Scripts\activate.bat`.
-
-</details>
-
-<details>
-<summary><b>Both platforms — one-liners</b></summary>
-
-WSL / Linux:
-
-```bash
-cd <repo> && python3 -m venv .venv && source .venv/bin/activate \
-  && pip install -r requirements.txt && python main.py
-```
-
-Windows PowerShell:
+`requirements.txt` is kept as a pip fallback; `pyproject.toml` + `uv.lock`
+is the source of truth. On Windows PowerShell, if `Activate.ps1` is blocked
+with *"running scripts is disabled on this system"*:
 
 ```powershell
-cd <repo>; py -3.12 -m venv venv; .\venv\Scripts\Activate.ps1; `
-  pip install -r requirements.txt; python main.py
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\.venv\Scripts\Activate.ps1
 ```
 
-The `Makefile` targets (`make install` / `make run` / `make test`) are
-convenience wrappers for the `bash` path only — PowerShell has no `make` by
-default, so use the explicit commands above.
+If the console shows mojibake, or you hit
+`UnicodeDecodeError: 'gbk' codec can't decode byte ...`, switch the console to
+UTF-8 for the session (`$env:PYTHONUTF8 = "1"; chcp 65001`) — or prefer WSL.
 
 </details>
 
@@ -278,25 +242,15 @@ http://127.0.0.1:8000/report?view=report&lang=zh&figure=1
 
 ### Step 4 — Run the tests
 
-WSL / Linux:
-
 ```bash
-source .venv/bin/activate
-pytest tests/ -q
-```
-
-Windows PowerShell:
-
-```powershell
-.\venv\Scripts\Activate.ps1
-pytest tests/ -q
+uv run pytest tests/ -q
 ```
 
 Provider-free — no API key required. The Agent-layer suites run fully offline.
 
 ```bash
-pytest tests/test_report_agent.py tests/test_report_data.py -v
-# 37 passed — canonical blocks, evidence trail, quality-rate deduplication,
+uv run pytest tests/test_report_agent.py tests/test_report_data.py -v
+# 40 passed — canonical blocks, evidence trail, quality-rate deduplication,
 #              decision-path inference, bilingual output, LLM path,
 #              provider-failure fallback, Q&A, report window selection
 ```
@@ -304,8 +258,8 @@ pytest tests/test_report_agent.py tests/test_report_data.py -v
 Browser end-to-end suite (optional, extra install — same on both platforms):
 
 ```bash
-pip install playwright && playwright install chromium
-pytest tests/test_web_e2e.py -q
+uv sync --group e2e && uv run playwright install chromium
+uv run pytest tests/test_web_e2e.py -q
 ```
 
 > ### ⚠️ Running the test suite wipes `data/supersense.db`
@@ -353,13 +307,13 @@ pytest tests/test_web_e2e.py -q
 
 ### Makefile targets
 
-Bash only (WSL / Linux):
-
 ```bash
-make install   # pip install -r requirements.txt
-make run       # python main.py
-make test      # pytest tests/ -v        ⚠ deletes data/supersense.db
-make clean     # removes __pycache__     ⚠ also deletes data/supersense.db
+make install       # uv sync (runtime + dev)
+make install-e2e   # uv sync --group e2e + playwright chromium
+make run           # uv run python main.py
+make test          # uv run pytest tests/ -v        ⚠ deletes data/supersense.db
+make clean         # removes __pycache__             ⚠ also deletes data/supersense.db
+make lock          # uv lock (regenerate uv.lock)
 ```
 
 ---
@@ -368,11 +322,11 @@ make clean     # removes __pycache__     ⚠ also deletes data/supersense.db
 
 | Symptom | Cause and fix |
 |---------|---------------|
-| `python: command not found` (WSL/Linux) | Use `python3`, or activate the venv first so `python` resolves inside it. |
-| `python` opens the Microsoft Store (Windows) | The App Execution Alias is intercepting it. Use `py -3.12`, or disable the alias under *Settings → Apps → App execution aliases*. |
-| `.\venv\Scripts\Activate.ps1 : running scripts is disabled` | `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` (current shell only). |
-| `ModuleNotFoundError: No module named 'markdown'` | Dependencies not installed, or the venv is not active. `pip install -r requirements.txt` (declared as `Markdown==3.10.2`). |
-| `ModuleNotFoundError: No module named 'yaml'` | Same — `PyYAML` is in `requirements.txt`. |
+| `uv: command not found` | Install uv once per machine (see Step 2), then restart the shell so `uv` is on `PATH`. |
+| `python: command not found` (WSL/Linux) | Use `uv run python …` so the project `.venv` resolves automatically. |
+| `python` opens the Microsoft Store (Windows) | The App Execution Alias is intercepting it. Use `uv run python …` (uv pins 3.12 via `.python-version`), or disable the alias under *Settings → Apps → App execution aliases*. |
+| `ModuleNotFoundError: No module named 'markdown'` | Dependencies not installed. Run `uv sync` (`markdown==3.10.2` is locked in `uv.lock`). |
+| `ModuleNotFoundError: No module named 'yaml'` | Same — run `uv sync` (`pyyaml` is in `pyproject.toml`). |
 | `UnicodeDecodeError: 'gbk' codec can't decode byte ...` | Native Windows reading `config.yaml` without an explicit encoding. Set `$env:PYTHONUTF8 = "1"`, or use WSL. |
 | `PermissionError: [WinError 32] The process cannot access the file` | A SQLite handle is still open — this is the test-isolation defect above. Close the app, or use WSL. |
 | `/report` returns HTTP 500 with `'NoneType' object has no attribute 'get'` | Empty database with no sensing rows. Guarded in `web/app.py`; restart to trigger the auto-seed. |
@@ -380,11 +334,12 @@ make clean     # removes __pycache__     ⚠ also deletes data/supersense.db
 | `sqlite3.IntegrityError: FOREIGN KEY constraint failed` when writing an episode | `episode_logs.event_id` references `health_events`. Any subscriber calling `DiagnosisAgent.handle_event()` must first persist the parent row with `insert_health_event(...)` — see the `on_diagnosis_event` subscriber in `main.py`. |
 | Port 8000 already in use | Change `web.port` in `config.yaml`. |
 
-> **WSL vs Windows interpreters.** The repo root may contain two environment
-> directories: `.venv/` (Linux layout — use `.venv/bin/python`) and `venv/`
-> (Windows layout — `venv\Scripts\python.exe`). **Under WSL always use `.venv`**;
-> the Windows one cannot be activated from bash, and vice versa. Both are
-> gitignored, so a fresh clone has neither.
+> **One `.venv/` path, two OS-local binaries.** WSL and Windows share this
+> folder but cannot share venv binaries (absolute paths + platform-specific
+> layout). After cloning on a new OS, just run `uv sync` once there to
+> materialise that OS's `.venv/`; never copy `.venv/` across OSes. Both
+> `.venv/` and the legacy `venv/` are gitignored, so a fresh clone has
+> neither until `uv sync`.
 
 <details>
 <summary><b>中文说明 — 快速开始</b></summary>
@@ -393,7 +348,8 @@ make clean     # removes __pycache__     ⚠ also deletes data/supersense.db
 
 | | |
 |---|---|
-| Python | **3.12**（代码使用 `list[str]` / `X \| None` 语法）。Windows 用 `py -3.12`，Linux/WSL 用 `python3.12` |
+| Python | **3.12**（`.python-version` 已锁定；缺解释器时 `uv` 会自动下载） |
+| 包管理 | **[uv](https://docs.astral.sh/uv/)**（WSL + Windows 统一，不再分 `.venv/` 与 `venv/` 两套） |
 | 操作系统 | Linux、**WSL（推荐）**，或 Windows 10/11 + PowerShell |
 | Git | 任意较新版本 |
 | 硬件 | **不需要**。感知层回放已配置的 CSV / 派生文件，运行 Agent 层无需任何 WiFi 网卡、雷达或热成像硬件 |
@@ -419,63 +375,34 @@ cd SuperSensorDoctor
 
 > 本工作区中的检出目录名为 `ubicomp/`。下文命令中的 `<repo>` 请替换为你自己的路径。
 
-### 第二步 —— 安装并启动
+### 第二步 —— 安装并启动（uv，WSL + Windows 统一）
 
-**WSL / Linux（bash）**
+> 之前本目录在 WSL 和 Windows 下各建了一套 venv（`.venv/` 与 `venv/`，
+> 路径与二进制不互通），现已统一为 **一份 `pyproject.toml` + `uv.lock`、
+> 每个系统各自 `uv sync` 生成本地 `.venv/`**。两者都 gitignore，全新 clone 下都没有。
 
 ```bash
 cd <repo>
-python3 --version                 # 应为 3.12.x
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-pip install -r requirements.txt
-export DEEPSEEK_API_KEY=sk-...    # 可选，启用实时 LLM 分诊
-python main.py                    # → http://127.0.0.1:8000
+# 每台机器装一次 uv（二选一）：
+# WSL / Linux: curl -LsSf https://astral.sh/uv/install.sh | sh
+# Windows PowerShell: powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+uv sync
+export DEEPSEEK_API_KEY=sk-...    # 可选，启用实时 LLM 分诊（PowerShell 用 $env:DEEPSEEK_API_KEY）
+uv run python main.py              # → http://127.0.0.1:8000
 ```
 
-若第二步报 `No module named venv` / `ensurepip is not available`：
+无需手动 `python -m venv` / `activate`，`uv run` 自动解析 `.venv`。
+旧的 pip 路径仍保留为后备：`pip install -r requirements.txt`（以
+`pyproject.toml` + `uv.lock` 为准）。
 
-```bash
-sudo apt update && sudo apt install -y python3-venv python3-pip
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-退出环境：`deactivate`。
-
-**Windows（PowerShell）**
-
-```powershell
-cd <repo>
-py -3.12 --version                # 应为 3.12.x
-py -3.12 -m venv venv
-.\venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-pip install -r requirements.txt
-$env:DEEPSEEK_API_KEY = "sk-..."  # 可选，仅当前会话有效
-python main.py                    # → http://127.0.0.1:8000
-```
-
-若 `Activate.ps1` 被拦，报 *"running scripts is disabled on this system"*，
-**只对当前 shell** 放开（不永久修改系统策略）：
+若 PowerShell 报 *"running scripts is disabled"*，仅对当前 shell 放开：
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.\venv\Scripts\Activate.ps1
 ```
 
-若控制台中文乱码，或报 `UnicodeDecodeError: 'gbk' codec can't decode byte ...`，
-把当前会话切到 UTF-8：
-
-```powershell
-$env:PYTHONUTF8 = "1"
-chcp 65001
-python main.py
-```
-
-退出环境：`deactivate`。用 **cmd.exe** 的话步骤相同，激活命令换成
-`venv\Scripts\activate.bat`。
+若控制台中文乱码或报 `UnicodeDecodeError: 'gbk' codec ...`，当前会话切 UTF-8
+（`$env:PYTHONUTF8 = "1"; chcp 65001`），或改用 WSL。
 
 ### 第三步 —— 使用
 
@@ -502,22 +429,12 @@ episode、10 条 health event 与 400 个传感窗口，界面不会空白，无
 
 ### 第四步 —— 运行测试
 
-WSL / Linux：
-
 ```bash
-source .venv/bin/activate
-pytest tests/ -q
-```
-
-Windows PowerShell：
-
-```powershell
-.\venv\Scripts\Activate.ps1
-pytest tests/ -q
+uv run pytest tests/ -q
 ```
 
 无需 API Key，Agent 层测试可完全离线运行。浏览器端到端套件为可选项，两个平台一致：
-先 `pip install playwright` 再 `playwright install chromium`。
+先 `uv sync --group e2e` 再 `uv run playwright install chromium`。
 
 > ### ⚠️ 跑测试会清空 `data/supersense.db`
 >
@@ -549,26 +466,27 @@ pytest tests/ -q
 > 正确修法是把测试库指向每个测试独立的 `tmp_path`，并在 teardown 前关闭连接，
 > 已记录在「已知问题」中。
 
-### Makefile 目标（仅 bash / WSL / Linux）
+### Makefile 目标
 
 ```bash
-make install   # pip install -r requirements.txt
-make run       # python main.py
-make test      # pytest tests/ -v        ⚠ 会删除 data/supersense.db
-make clean     # 清理 __pycache__        ⚠ 同时删除 data/supersense.db
+make install       # uv sync（运行 + 测试依赖）
+make install-e2e   # uv sync --group e2e + playwright chromium
+make run           # uv run python main.py
+make test          # uv run pytest tests/ -v        ⚠ 会删除 data/supersense.db
+make clean         # 清理 __pycache__                ⚠ 同时删除 data/supersense.db
 ```
 
-PowerShell 默认没有 `make`，请直接使用上文列出的显式命令。
+PowerShell 默认没有 `make`，请直接使用上文 `uv …` 命令。
 
 ### 常见故障排查
 
 | 现象 | 原因与处理 |
 |------|-----------|
-| `python: command not found`（WSL/Linux） | 改用 `python3`，或先激活 venv，使 `python` 指向环境内的解释器。 |
-| 在 Windows 输入 `python` 却打开 Microsoft Store | 应用执行别名拦截。改用 `py -3.12`，或在 *设置 → 应用 → 应用执行别名* 中关闭。 |
-| `.\venv\Scripts\Activate.ps1 : running scripts is disabled` | `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`（仅当前 shell 生效）。 |
-| `ModuleNotFoundError: No module named 'markdown'` | 依赖未安装或 venv 未激活。执行 `pip install -r requirements.txt`（已声明 `Markdown==3.10.2`）。 |
-| `ModuleNotFoundError: No module named 'yaml'` | 同上，`PyYAML` 已在 `requirements.txt` 中。 |
+| `uv: command not found` | 按第二步每台机器装一次 `uv`，装完重开 shell。 |
+| `python: command not found`（WSL/Linux） | 改用 `uv run python …`，自动解析项目 `.venv`。 |
+| 在 Windows 输入 `python` 却打开 Microsoft Store | 应用执行别名拦截。改用 `uv run python …`（已锁定 3.12），或在 *设置 → 应用 → 应用执行别名* 中关闭。 |
+| `ModuleNotFoundError: No module named 'markdown'` | 依赖未安装。执行 `uv sync`（`markdown==3.10.2` 已锁进 `uv.lock`）。 |
+| `ModuleNotFoundError: No module named 'yaml'` | 同上，执行 `uv sync`（`pyyaml` 在 `pyproject.toml` 中）。 |
 | `UnicodeDecodeError: 'gbk' codec can't decode byte ...` | 原生 Windows 未显式指定编码读取 `config.yaml`。设置 `$env:PYTHONUTF8 = "1"`，或改用 WSL。 |
 | `PermissionError: [WinError 32] The process cannot access the file` | SQLite 句柄未释放 —— 即上述测试隔离缺陷。关闭应用，或改用 WSL。 |
 | `/report` 返回 HTTP 500，报 `'NoneType' object has no attribute 'get'` | 空数据库、无传感记录。`web/app.py` 已加保护；重启以触发自动播种。 |
@@ -576,10 +494,10 @@ PowerShell 默认没有 `make`，请直接使用上文列出的显式命令。
 | 写入 episode 时报 `sqlite3.IntegrityError: FOREIGN KEY constraint failed` | `episode_logs.event_id` 外键指向 `health_events`。任何调用 `DiagnosisAgent.handle_event()` 的订阅者都必须先用 `insert_health_event(...)` 落库父行 —— 参见 `main.py` 的 `on_diagnosis_event`。 |
 | 8000 端口被占用 | 修改 `config.yaml` 中的 `web.port`。 |
 
-> **WSL 与 Windows 解释器之别。** 仓库根目录可能同时存在两套环境：
-> `.venv/`（Linux 结构，用 `.venv/bin/python`）与 `venv/`（Windows 结构，
-> `venv\Scripts\python.exe`）。**在 WSL 下一律使用 `.venv`** —— Windows 那套无法从
-> bash 激活，反之亦然。两者均被 gitignore 忽略，因此全新 clone 下都不存在。
+> **同一 `.venv/` 路径、各自系统的二进制。** WSL 与 Windows 共享本目录，
+> 但 venv 二进制不可跨系统复用（绝对路径 + 平台结构不同）。换系统后只需在
+> 该系统下跑一次 `uv sync` 生成本地 `.venv/`；不要跨系统拷贝。`.venv/` 与旧
+> `venv/` 均被 gitignore，全新 clone 下都不存在。
 
 </details>
 
@@ -843,8 +761,11 @@ ubicomp/
 │   └── ...                     # baseline / fusion / replay / db / event_bus 等
 ├── main.py                     # 集成入口 (init_db → EventBus → Agents → FastAPI)
 ├── config.yaml                 # 配置 (LLM/DB/Nurse/Diagnosis/Web)
-├── requirements.txt
-├── Makefile                    # install / run / test / clean
+├── pyproject.toml              # uv 主配置 (runtime + dev/e2e groups)
+├── uv.lock                     # 锁定版本 (提交, 各机器 `uv sync` 同版本)
+├── .python-version             # 锁定 Python 3.12
+├── requirements.txt            # pip 后备 (以 pyproject.toml 为准)
+├── Makefile                    # install / install-e2e / run / test / clean / lock (uv 封装)
 └── README.md
 ```
 
@@ -852,7 +773,7 @@ ubicomp/
 
 ## Tech Stack
 
-- **Python 3.12** — Bare ReAct loop, no LangChain / LangGraph dependency
+- **Python 3.12 + uv** — Bare ReAct loop, no LangChain / LangGraph dependency; one `uv sync` per OS unifies the old `.venv/` vs `venv/` split
 - **FastAPI + Jinja2** — Web doctor workstation
 - **SQLite (WAL mode)** — Local persistent storage with `PRAGMA foreign_keys`
 - **DeepSeek V4 API** — LLM provider via an OpenAI-compatible HTTP endpoint

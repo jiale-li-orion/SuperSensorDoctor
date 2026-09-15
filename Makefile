@@ -1,13 +1,23 @@
-.PHONY: install run test clean
+.PHONY: install install-e2e run test clean lock sync
 
-install:
-	pip install -r requirements.txt
+install: ## create .venv + install locked deps (runtime + dev)
+	uv sync
+
+install-e2e: ## + browser E2E group
+	uv sync --group e2e
+	uv run playwright install chromium
+
+sync:
+	uv sync
+
+lock:
+	uv lock
 
 run:
-	python main.py
+	uv run python main.py
 
 test:
-	pytest tests/ -v
+	uv run pytest tests/ -v
 
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
